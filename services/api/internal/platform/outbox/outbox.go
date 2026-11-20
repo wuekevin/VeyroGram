@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
+
 	"veyrogram/api/internal/platform/logx"
 )
 
@@ -117,9 +119,40 @@ type claimed struct {
 	event Event
 }
 
+// retryable reports MySQL deadlock (1213) and lock-wait timeout (1205): InnoDB rolls the whole transaction back, so re-running it is safe and is the
+// documented remedy. Concurrent claimers contend on the secondary-index locks of the ordering-key sub-select and do hit 1213 under load.
+func retryable(err error) bool {
+	var me *mysql.MySQLError
+	return errors.As(err, &me) && (me.Number == 1213 || me.Number == 1205)
+}
+
+// inTx runs fn, retrying a few times with a short jittered pause when the transaction was rolled back by a deadlock or lock-wait timeout.
+func inTx[T any](ctx context.Context, fn func() (T, error)) (T, error) {
+	var out T
+	var err error
+	for i := 0; i < 5; i++ {
+		if out, err = fn(); err == nil || !retryable(err) {
+			return out, err
+		}
+		select {
+		case <-ctx.Done():
+			return out, ctx.Err()
+		case <-time.After(time.Duration(5+i*10) * time.Millisecond):
+		}
+	}
+	return out, err
+}
+
+func (w *Worker) claim(ctx context.Context) ([]claimed, error) {
+	if w.ID == "" {
+		w.ID = newID()[:16]
+	}
+	return inTx(ctx, func() ([]claimed, error) { return w.claimOnce(ctx) })
+}
+
 // claim atomically reserves up to Batch events. Only the oldest unfinished event of each ordering key is eligible, so events with the same key
 // are delivered strictly one after another, across all workers. Rows whose lease expired (crashed worker) are eligible again.
-func (w *Worker) claim(ctx context.Context) ([]claimed, error) {
+func (w *Worker) claimOnce(ctx context.Context) ([]claimed, error) {
 	if w.ID == "" {
 		w.ID = newID()[:16]
 	}
@@ -204,6 +237,11 @@ func safeCall(ctx context.Context, h Handler, e Event) (err error) {
 }
 
 func (w *Worker) finish(ctx context.Context, c claimed, herr error, record bool) error {
+	_, err := inTx(ctx, func() (struct{}, error) { return struct{}{}, w.finishOnce(ctx, c, herr, record) })
+	return err
+}
+
+func (w *Worker) finishOnce(ctx context.Context, c claimed, herr error, record bool) error {
 	now := w.now()
 	// completion must survive a cancelled ctx: the side effect already happened
 	ctx = context.WithoutCancel(ctx)
