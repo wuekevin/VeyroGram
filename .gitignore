@@ -2,7 +2,7 @@
 # 上游参考仓库（体量大、各自独立版本管理；fork/补丁在 Story 1.8 处理）
 /upstream/
 # 本地构建产物与密钥
-/bin/
+bin/
 *.test
 *.out
 .env

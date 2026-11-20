@@ -1,0 +1,51 @@
+# VeyroGram WuKongIM (patched build, see docs/ops/wukongim-patching.md) — native systemd unit, no Docker.
+# Install: place the binary built by tools/build_wukongim.sh at /opt/veyrogram/wukongim/releases/<version>/wukongim, point `current` at it,
+# render /etc/veyrogram/wukongim.toml (tools/render_wukongim.py + tools/wukongim_config_check.py), then `systemctl enable --now veyrogram-wukongim`.
+[Unit]
+Description=VeyroGram WuKongIM
+Documentation=https://github.com/ (internal) docs/ops/wukongim-patching.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=veyrogram-im
+Group=veyrogram-im
+# The rendered config holds the IM secrets; keep it root:veyrogram-im 0640. Nothing secret lives in this unit.
+EnvironmentFile=-/etc/veyrogram/wukongim.env
+ExecStartPre=/usr/bin/python3 -I /opt/veyrogram/wukongim/current/tools/wukongim_config_check.py /etc/veyrogram/wukongim.toml
+ExecStart=/opt/veyrogram/wukongim/current/wukongim -config /etc/veyrogram/wukongim.toml
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=30
+StateDirectory=veyrogram-im
+LogsDirectory=veyrogram-im
+WorkingDirectory=/var/lib/veyrogram-im
+UMask=0077
+LimitNOFILE=1048576
+MemoryMax=4G
+TasksMax=65536
+
+# Sandboxing: TCP only; writes only to its state/log directories.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

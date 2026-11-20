@@ -10,3 +10,5 @@ vet:  ; $(GO) vet ./...
 fmt:  ; test -z "$$(gofmt -l .)" || (gofmt -l . && exit 1)
 build: ; CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(BIN) ./cmd/api
 linux: ; GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o $(BIN)-linux-amd64 ./cmd/api
+
+anchor-store-linux: ; GOOS=linux GOARCH=amd64 CGO_ENABLED=0 $(GO) build -trimpath -ldflags "-s -w" -o bin/anchor-store-linux-amd64 ./cmd/anchor-store

@@ -1,0 +1,47 @@
+# VeyroGram audit-anchor store — run on a SEPARATE host that the main host and its DB cannot administer. Write-once; see internal/anchorstore.
+# Install: build with `go build ./cmd/anchor-store` (linux/amd64), place at /opt/veyrogram/anchor-store/current/anchor-store, create /etc/veyrogram/anchor-store.env with ANCHOR_STORE_* values, then `systemctl enable --now veyrogram-anchor-store` behind an HTTPS reverse proxy.
+[Unit]
+Description=VeyroGram audit-anchor store
+Documentation=https://github.com/ (internal) docs/ops/MANUAL-CHECKLIST.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=veyrogram-anchor
+Group=veyrogram-anchor
+EnvironmentFile=/etc/veyrogram/anchor-store.env
+ExecStart=/opt/veyrogram/anchor-store/current/anchor-store
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=30
+StateDirectory=veyrogram-anchor
+LogsDirectory=veyrogram-anchor
+WorkingDirectory=/var/lib/veyrogram-anchor
+UMask=0077
+MemoryMax=256M
+TasksMax=512
+
+# Sandboxing: TCP only; writes only to its state/log directories.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

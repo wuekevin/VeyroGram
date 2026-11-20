@@ -1,0 +1,34 @@
+# One-shot job: write today's audit-chain anchor to the off-host store. Triggered by veyrogram-audit-anchor.timer; a non-zero exit marks the unit failed (alert on it).
+[Unit]
+Description=VeyroGram audit: anchor
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=veyrogram
+Group=veyrogram
+EnvironmentFile=/etc/veyrogram/api.env
+ExecStart=/opt/veyrogram/api/current/veyrogram-api audit anchor
+TimeoutStartSec=300
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
