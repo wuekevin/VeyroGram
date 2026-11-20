@@ -66,6 +66,13 @@ jobs:
         run: python3 -I tools/openapi_diff.py --dir packages/contracts/openapi --base-ref "origin/${{ github.base_ref || 'main' }}"
       - run: bash tests/ops/test_deploy.sh
       - run: bash tests/ops/test_nginx.sh
+      - name: exposure gate - fetch pinned WuKongIM and run config-check + live port scan (fails if any internal port is reachable)
+        run: |
+          pin=$(sed -n 's/^PIN=//p' tools/build_wukongim.sh)
+          mkdir -p upstream && git clone --quiet https://github.com/WuKongIM/WuKongIM.git upstream/WuKongIM
+          git -C upstream/WuKongIM checkout --quiet "$pin"
+          bash tools/build_wukongim.sh "$RUNNER_TEMP/wukongim"
+          VG_TEST_WUKONGIM_BIN="$RUNNER_TEMP/wukongim" python3 -I tests/ops/test_exposure.py
   design:
     runs-on: ubuntu-latest
     steps:

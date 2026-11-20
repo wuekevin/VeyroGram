@@ -1,0 +1,64 @@
+# VeyroGram production WuKongIM config (single node). Render with tools/render_wukongim.py; never commit the rendered file.
+# Rules (AD-2 / Story 1.7): every secret is overridden, API/Manager/cluster/Prometheus/MQTT stay on loopback or private
+# addresses, plugins and MQTT are off, benchmark/debug surfaces are off. Only the gateway listeners are client-facing.
+[node]
+id = 1
+data_dir = "${WK_DATA_DIR}"
+
+[cluster]
+listen_addr = "${WK_CLUSTER_ADDR}"
+id = "veyrogram-im"
+nodes = [{ id = 1, addr = "${WK_CLUSTER_ADDR}" }]
+join_token = "${WK_JOIN_TOKEN}"
+initial_slot_count = 12
+hash_slot_count = 256
+slot_replica_n = 1
+
+[api]
+listen_addr = "${WK_API_ADDR}"
+external_tcp_addr = "${WK_EXTERNAL_TCP}"
+external_ws_addr = "${WK_EXTERNAL_WS}"
+
+[manager]
+listen_addr = "${WK_MANAGER_ADDR}"
+auth_on = true
+jwt_secret = "${WK_MANAGER_JWT_SECRET}"
+jwt_issuer = "veyrogram-im-manager"
+jwt_expire = "8h"
+users = [{ username = "${WK_MANAGER_USER}", password = "${WK_MANAGER_PASSWORD}", permissions = [{ resource = "*", actions = ["*"] }] }]
+
+[bench]
+api_enable = false
+api_token = "${WK_BENCH_TOKEN}"
+
+[observability]
+metrics_enable = true
+debug_api_enable = false
+
+[prometheus]
+enable = false
+
+[diagnostics]
+enable = false
+
+[gateway]
+token_auth_on = true
+listeners = [{ name = "tcp-wkproto", network = "tcp", address = "${WK_GATEWAY_TCP}", transport = "gnet", protocol = "wkproto" }, { name = "ws-gateway", network = "websocket", address = "${WK_GATEWAY_WS}", transport = "gnet", protocol = "wsmux" }]
+
+[webhook]
+http_addr = ""
+
+[webhook.before_send]
+enabled = true
+http_addr = "${WK_BEFORE_SEND_URL}"
+timeout = "500ms"
+on_timeout = "deny"
+on_error = "deny"
+
+[plugin]
+enable = false
+hot_reload = false
+
+[mqtt]
+enable = false
+listen_addr = "127.0.0.1:1883"

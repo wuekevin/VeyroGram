@@ -13,6 +13,7 @@ step "OpenAPI diff gate (tests)"        python3 -I tests/ops/test_openapi_diff.p
 step "OpenAPI diff vs base ref"         python3 -I tools/openapi_diff.py --dir packages/contracts/openapi --base-ref "${VG_BASE_REF:-origin/main}"
 step "deploy/rollback rehearsal"        bash tests/ops/test_deploy.sh
 step "nginx whitelist (real nginx)"     bash tests/ops/test_nginx.sh
+step "exposure gate (config check + scanner + real WuKongIM)" bash -c 'python3 -I tests/ops/test_exposure.py && { [ -n "${VG_TEST_WUKONGIM_BIN:-}" ] || echo "NOTE: VG_TEST_WUKONGIM_BIN unset - real WuKongIM exposure test was SKIPPED"; }'
 step "design tokens + contrast"         python3 -I packages/design-tokens/build.py
 step "emoji-in-navigation lint"         python3 -I tools/lint_no_emoji_nav.py apps
 if command -v promtool >/dev/null 2>&1; then
