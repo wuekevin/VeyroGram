@@ -1,11 +1,16 @@
-// Package imwebhook receives WuKongIM callbacks on the internal listener (ARCHITECTURE AD-2). WuKongIM signs nothing, so the handler enforces:
+// Package imwebhook receives WuKongIM callbacks on the internal listener (ARCHITECTURE AD-2). Stock WuKongIM signs nothing, so the handler enforces:
 // an unguessable path secret (constant-time compare), a source-address allowlist, POST + JSON only, a body size cap, and strict decoding.
+// With SigningSecret set (requires the VeyroGram-patched WuKongIM, patches/wukongim/0001) it also requires a valid HMAC-SHA256 signature
+// and a fresh timestamp, so a caller that learns the path secret still cannot forge or replay callbacks.
 // Anything else is 403/4xx and reported through OnReject so it can raise an alert.
 package imwebhook
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,7 +18,9 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const MaxBody = 64 << 10
@@ -46,10 +53,35 @@ type Handlers struct {
 
 // Config configures the handler.
 type Config struct {
-	Secret   string
-	Allow    []netip.Prefix // allowed source addresses; empty means loopback only
-	Handlers Handlers
-	OnReject func(reason string) // "bad_secret" | "source" | "method" | "content_type" | "body" ...
+	Secret string
+	// SigningSecret, when set, makes a valid X-WK-Signature/X-WK-Timestamp mandatory (reject reason "bad_signature").
+	SigningSecret string
+	MaxSkew       time.Duration // allowed clock difference for the timestamp; default 5 minutes
+	Now           func() time.Time
+	Allow         []netip.Prefix // allowed source addresses; empty means loopback only
+	Handlers      Handlers
+	OnReject      func(reason string) // "bad_secret" | "source" | "method" | "content_type" | "body" ...
+}
+
+// Signature headers set by the patched WuKongIM (pkg/webhooksig): HMAC-SHA256(secret, timestamp + "." + body), hex, prefixed "v1=".
+const (
+	HeaderTimestamp = "X-WK-Timestamp"
+	HeaderSignature = "X-WK-Signature"
+)
+
+func validSignature(secret, timestamp, signature string, body []byte, now time.Time, skew time.Duration) bool {
+	sec, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil || secret == "" {
+		return false
+	}
+	if d := now.Sub(time.Unix(sec, 0)); d > skew || d < -skew {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(timestamp))
+	mac.Write([]byte("."))
+	mac.Write(body)
+	return hmac.Equal([]byte("v1="+hex.EncodeToString(mac.Sum(nil))), []byte(signature))
 }
 
 var loopback = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
@@ -124,6 +156,19 @@ func Handler(c Config) http.Handler {
 		if err != nil || len(body) > MaxBody {
 			reject(w, http.StatusRequestEntityTooLarge, "body")
 			return
+		}
+		if c.SigningSecret != "" {
+			now, skew := time.Now(), c.MaxSkew
+			if c.Now != nil {
+				now = c.Now()
+			}
+			if skew <= 0 {
+				skew = 5 * time.Minute
+			}
+			if !validSignature(c.SigningSecret, r.Header.Get(HeaderTimestamp), r.Header.Get(HeaderSignature), body, now, skew) {
+				reject(w, http.StatusForbidden, "bad_signature")
+				return
+			}
 		}
 		switch r.URL.Query().Get("event") {
 		case "msg.before_send":

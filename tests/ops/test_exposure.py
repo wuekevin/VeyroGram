@@ -19,7 +19,7 @@ def env(data, ports):
             'WK_EXTERNAL_WS': f'ws://127.0.0.1:{ports["ws"]}', 'WK_GATEWAY_TCP': f'127.0.0.1:{ports["tcp"]}',
             'WK_GATEWAY_WS': f'127.0.0.1:{ports["ws"]}', 'WK_JOIN_TOKEN': 'j' * 40, 'WK_MANAGER_JWT_SECRET': 'k' * 40,
             'WK_MANAGER_USER': 'vgops', 'WK_MANAGER_PASSWORD': 'p' * 24, 'WK_BENCH_TOKEN': 'b' * 40,
-            'WK_BEFORE_SEND_URL': 'http://127.0.0.1:9102/hook'}
+            'WK_BEFORE_SEND_URL': 'http://127.0.0.1:9102/hook', 'WK_WEBHOOK_SIGNING_SECRET': 's' * 40}
 
 def lan_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -38,13 +38,14 @@ class ConfigCheck(unittest.TestCase):
     def test_template_passes(self): self.assertEqual(cc.check(self.good()), [])
     def test_upstream_defaults_fail_on_every_required_item(self):
         f = ' | '.join(cc.check(open(EXAMPLE).read()))
-        for needle in ('cluster.join_token', 'manager.jwt_secret', 'bench.api_token', 'plugin.enable', 'plugin.hot_reload', 'mqtt.listen_addr', 'manager user'):
+        for needle in ('webhook.signing_secret', 'cluster.join_token', 'manager.jwt_secret', 'bench.api_token', 'plugin.enable', 'plugin.hot_reload', 'mqtt.listen_addr', 'manager user'):
             self.assertIn(needle, f)
     def test_each_mutation_is_caught(self):
         base = self.good()
         muts = {
             'default join token': ('join_token = "' + 'j' * 40 + '"', 'join_token = "change-me"'),
             'default jwt': ('jwt_secret = "' + 'k' * 40 + '"', 'jwt_secret = "wukongim-dev-manager-secret"'),
+            'missing signing secret': ('signing_secret = "' + 's' * 40 + '"', 'signing_secret = ""'),
             'empty bench token': ('api_token = "' + 'b' * 40 + '"', 'api_token = ""'),
             'plugin on': ('[plugin]\nenable = false', '[plugin]\nenable = true'),
             'hot reload': ('hot_reload = false', 'hot_reload = true'),

@@ -450,7 +450,9 @@ func TestAuditVerifyAndAnchorCommands(t *testing.T) {
 
 func TestWorkerProcessesEventsAndReplayIsAudited(t *testing.T) {
 	d, dsn, bin := migrated(t)
-	env := []string{"VG_ENV=development", "VG_MYSQL_DSN=" + dsn}
+	workerAddr := freeAddr(t)
+	const token = "worker-metrics-token-0123456789"
+	env := []string{"VG_ENV=development", "VG_MYSQL_DSN=" + dsn, "VG_WORKER_INTERNAL_ADDR=" + workerAddr, "VG_METRICS_TOKEN=" + token}
 	// an event for a topic nobody handles dead-letters once attempts are exhausted; fast-forward to the final attempt
 	id, err := outbox.Enqueue(context.Background(), d, time.Now(), 1, "unhandled.topic", "k", []byte("x"))
 	if err != nil {
@@ -474,6 +476,17 @@ func TestWorkerProcessesEventsAndReplayIsAudited(t *testing.T) {
 	}
 	if dl == 0 {
 		t.Fatalf("the worker process must dead-letter the exhausted event; log:\n%s", buf.String())
+	}
+	// the worker process exports its own metrics on its own internal listener, behind the bearer token
+	if code, _ := get(t, "http://"+workerAddr+"/metrics", ""); code == 200 {
+		t.Fatal("worker /metrics must require the bearer token")
+	}
+	code, body := get(t, "http://"+workerAddr+"/metrics", "Bearer "+token)
+	if code != 200 || !strings.Contains(body, `vg_outbox_events_total{topic="unhandled.topic",result="dead"} 1`) {
+		t.Fatalf("worker metrics must count the dead-lettered event: %d\n%s", code, body)
+	}
+	if code, _ := get(t, "http://"+workerAddr+"/readyz", ""); code != 200 {
+		t.Fatalf("worker /readyz should be ready with MySQL up, got %d", code)
 	}
 	if _, se, code := runBin(t, bin, env, "outbox", "replay", fmt.Sprint(dl)); code != 0 {
 		t.Fatalf("replay: %d %s", code, se)
@@ -500,5 +513,52 @@ func TestOutboxBacklogIsExportedAsMetric(t *testing.T) {
 	_, m := get(t, "http://"+p.internal+"/metrics", "Bearer metrics-token-0123456789abcdef")
 	if !strings.Contains(m, "vg_outbox_pending 3") {
 		t.Fatalf("vg_outbox_pending must reflect the queue:\n%s", m)
+	}
+}
+
+func TestAuditCheckAnchorsCommandAgainstAnAnchorStore(t *testing.T) {
+	d, dsn, bin := migrated(t)
+	store := map[string][]byte{}
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.Method {
+		case http.MethodPut:
+			b, _ := io.ReadAll(r.Body)
+			store[r.URL.Path] = b
+		case http.MethodGet:
+			if b, ok := store[r.URL.Path]; ok {
+				w.Write(b)
+				return
+			}
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	env := []string{"VG_ENV=development", "VG_MYSQL_DSN=" + dsn, "VG_AUDIT_ANCHOR_URL=" + srv.URL + "/b"}
+	for i := 0; i < 4; i++ {
+		if err := (&audit.Log{DB: d}).Append(context.Background(), audit.Entry{Actor: "a", Action: "x", Target: "t"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, code := runBin(t, bin, env, "audit", "check-anchors"); code != 1 {
+		t.Fatalf("with no anchors at all the check must fail (nothing was verified), got %d", code)
+	}
+	if _, se, code := runBin(t, bin, env, "audit", "anchor"); code != 0 {
+		t.Fatal(se)
+	}
+	if so, se, code := runBin(t, bin, env, "audit", "check-anchors", "-days", "3"); code != 0 || !strings.Contains(so, "checked=1 missing=2") {
+		t.Fatalf("check: %d %q %q", code, so, se)
+	}
+	if _, _, code := runBin(t, bin, env, "audit", "check-anchors", "-days", "3", "-require-all"); code != 1 {
+		t.Fatal("-require-all must fail when days are missing")
+	}
+	d.Exec("DELETE FROM audit_log WHERE id > 2") // tail truncation: the chain still verifies by itself
+	if _, se, code := runBin(t, bin, env, "audit", "verify"); code != 0 {
+		t.Fatalf("premise: a truncated chain verifies alone: %q", se)
+	}
+	if _, se, code := runBin(t, bin, env, "audit", "check-anchors"); code != 1 || !strings.Contains(se, "anchor") {
+		t.Fatalf("tail truncation must be detected against the off-host anchor: %d %q", code, se)
 	}
 }

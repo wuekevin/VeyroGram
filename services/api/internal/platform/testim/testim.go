@@ -85,8 +85,26 @@ func setKey(t testing.TB, conf, section, key, value string) string {
 	return ""
 }
 
+// addKey inserts `key = value` directly under [section] for keys that exist only in patched builds (see patches/wukongim).
+func addKey(t testing.TB, conf, section, key, value string) string {
+	t.Helper()
+	hdr := "[" + section + "]"
+	i := strings.Index(conf, "\n"+hdr+"\n")
+	if i < 0 {
+		t.Fatalf("testim: section %s not found", hdr)
+	}
+	i += len(hdr) + 2
+	return conf[:i] + key + " = " + value + "\n" + conf[i:]
+}
+
 // Start launches WuKongIM with before_send disabled (pass beforeSendURL to enable the synchronous webhook).
 func Start(t testing.TB, beforeSendURL string) *IM {
+	t.Helper()
+	return StartSigned(t, beforeSendURL, "")
+}
+
+// StartSigned is Start plus webhook.signing_secret, which exists only in the VeyroGram-patched build (tools/build_wukongim.sh).
+func StartSigned(t testing.TB, beforeSendURL, signingSecret string) *IM {
 	t.Helper()
 	bin := os.Getenv("VG_TEST_WUKONGIM_BIN")
 	if bin == "" {
@@ -109,6 +127,9 @@ func Start(t testing.TB, beforeSendURL string) *IM {
 	conf = setKey(t, conf, "cluster", "join_token", `"test-only-join-token-0123456789abcdef"`)
 	conf = setKey(t, conf, "gateway", "listeners", fmt.Sprintf(`[{ name = "tcp-wkproto", network = "tcp", address = "127.0.0.1:%d", transport = "gnet", protocol = "wkproto" }, { name = "ws-gateway", network = "websocket", address = "127.0.0.1:%d", transport = "gnet", protocol = "wsmux" }]`, tcp, ws))
 	conf = setKey(t, conf, "plugin", "enable", "false")
+	if signingSecret != "" {
+		conf = addKey(t, conf, "webhook", "signing_secret", fmt.Sprintf("%q", signingSecret))
+	}
 	if beforeSendURL != "" {
 		conf = setKey(t, conf, "webhook.before_send", "enabled", "true")
 		conf = setKey(t, conf, "webhook.before_send", "http_addr", fmt.Sprintf("%q", beforeSendURL))

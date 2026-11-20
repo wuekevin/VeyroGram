@@ -47,6 +47,8 @@ listeners = [{ name = "tcp-wkproto", network = "tcp", address = "${WK_GATEWAY_TC
 
 [webhook]
 http_addr = ""
+# HMAC-SHA256 signing of every webhook (needs the VeyroGram-patched build, patches/wukongim/0001); must equal VG_IM_WEBHOOK_SIGNING_SECRET
+signing_secret = "${WK_WEBHOOK_SIGNING_SECRET}"
 
 [webhook.before_send]
 enabled = true

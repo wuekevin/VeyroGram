@@ -6,7 +6,7 @@ export GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.10}
 fail=0; step() { echo; echo "== $1"; shift; if "$@"; then echo "   PASS"; else echo "   FAIL"; fail=1; fi; }
 step "go fmt (services/api)"            bash -c 'cd services/api && test -z "$(gofmt -l .)"'
 step "go vet"                           bash -c 'cd services/api && go vet ./...'
-step "go test -race (incl. AD-1 import-direction check)" bash -c 'cd services/api && go test -race -count=1 ./... && { [ -n "${VG_TEST_MYSQL_DSN:-}" ] || echo "NOTE: VG_TEST_MYSQL_DSN unset - MySQL integration tests were SKIPPED"; } && { [ -n "${VG_TEST_WUKONGIM_BIN:-}" ] || echo "NOTE: VG_TEST_WUKONGIM_BIN unset - WuKongIM contract tests were SKIPPED (tools/build_wukongim.sh)"; }'
+step "go test -race (incl. AD-1 import-direction check)" bash -c 'cd services/api && go test -race -count=1 ./... && { [ -n "${VG_TEST_MYSQL_DSN:-}" ] || echo "NOTE: VG_TEST_MYSQL_DSN unset - MySQL integration tests were SKIPPED"; } && { [ -n "${VG_TEST_WUKONGIM_BIN:-}" ] || echo "NOTE: VG_TEST_WUKONGIM_BIN unset - WuKongIM contract tests were SKIPPED (build the patched binary with tools/build_wukongim.sh)"; }'
 step "infra policy lint"                python3 -I tools/lint_infra.py
 step "infra lint unit tests"            python3 -I tests/ops/test_lint_infra.py
 step "OpenAPI diff gate (tests)"        python3 -I tests/ops/test_openapi_diff.py

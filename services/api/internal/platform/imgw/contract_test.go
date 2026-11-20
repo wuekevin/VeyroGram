@@ -74,9 +74,15 @@ type hookRig struct {
 
 func (h *hookRig) start(t *testing.T, pathSecret string) string {
 	t.Helper()
+	return h.startSigned(t, pathSecret, "")
+}
+
+func (h *hookRig) startSigned(t *testing.T, pathSecret, signing string) string {
+	t.Helper()
 	handler := imwebhook.Handler(imwebhook.Config{
-		Secret:   hookSecret,
-		OnReject: func(r string) { h.mu.Lock(); h.rejects = append(h.rejects, r); h.mu.Unlock() },
+		Secret:        hookSecret,
+		SigningSecret: signing,
+		OnReject:      func(r string) { h.mu.Lock(); h.rejects = append(h.rejects, r); h.mu.Unlock() },
 		Handlers: imwebhook.Handlers{BeforeSend: func(_ context.Context, m imwebhook.BeforeSend) (imwebhook.Decision, error) {
 			h.mu.Lock()
 			h.got = append(h.got, m)
@@ -179,3 +185,36 @@ func TestContractAdapterRecoversAfterIMRestart(t *testing.T) {
 }
 
 var _ = http.StatusOK
+
+// The patched WuKongIM (patches/wukongim/0001) signs callbacks. Against the REAL binary: a matching key lets sends through; a mismatching key
+// makes our handler refuse every callback (reported as bad_signature) and the IM, which fails closed, rejects the sends.
+func TestContractSignedCallbacksAreAuthenticatedAndForgeriesFailClosed(t *testing.T) {
+	const key = "contract-signing-key-0123456789abcdef"
+	allow := func(imwebhook.BeforeSend) (imwebhook.Decision, error) { return imwebhook.Decision{Allow: true}, nil }
+
+	h := &hookRig{policy: allow}
+	im := testim.StartSigned(t, h.startSigned(t, hookSecret, key), key)
+	c := newClient(t, im)
+	if _, err := c.Send(context.Background(), "alice", "bob", 1, "sig-ok", []byte("hello")); err != nil {
+		t.Fatalf("a callback signed with the shared key must be accepted: %v", err)
+	}
+	h.mu.Lock()
+	if len(h.got) == 0 || len(h.rejects) != 0 {
+		t.Fatalf("callback not delivered or wrongly rejected: got=%d rejects=%v", len(h.got), h.rejects)
+	}
+	h.mu.Unlock()
+
+	h2 := &hookRig{policy: allow}
+	im2 := testim.StartSigned(t, h2.startSigned(t, hookSecret, "a-different-key-0123456789abcdef0123"), key)
+	if _, err := newClient(t, im2).Send(context.Background(), "alice", "bob", 1, "sig-bad", []byte("x")); err == nil {
+		t.Fatal("a callback whose signature does not verify must make the send fail (fail-closed)")
+	}
+	h2.mu.Lock()
+	defer h2.mu.Unlock()
+	if len(h2.got) != 0 {
+		t.Fatalf("the policy must never see an unauthenticated callback: %v", h2.got)
+	}
+	if len(h2.rejects) == 0 || h2.rejects[0] != "bad_signature" {
+		t.Fatalf("a forged callback must be reported as bad_signature for alerting, got %v", h2.rejects)
+	}
+}

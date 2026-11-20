@@ -26,6 +26,7 @@ const (
 type Config struct {
 	Env                Env
 	HTTPAddr           string // public API listener (behind Nginx)
+	WorkerInternalAddr string // worker process /metrics + health (must differ from InternalAddr; loopback/private only)
 	InternalAddr       string // /healthz, /readyz (and later /metrics): must be loopback/private
 	Debug              bool
 	SMSFixedCode       string   // upstream-style "test SMS code"; must be empty outside development/test
@@ -38,6 +39,7 @@ type Config struct {
 	AuditAnchorURL     string   // off-host store for daily audit-log head anchors (https; object storage with versioning/WORM or a log host)
 	AuditAnchorToken   string
 	IMWebhookAllow     string // comma-separated CIDRs/IPs allowed to call the IM callback listener (default: loopback only)
+	IMWebhookSigning   string // optional HMAC key; when set, callbacks must carry a valid signature (needs the patched WuKongIM)
 	IMWebhookSecret    string // path secret for the callback URL (WuKongIM sends no signature); empty disables the callback listener
 	MySQLDSN           string
 }
@@ -63,6 +65,7 @@ func Load(getenv func(string) string) (Config, []Violation) {
 	c := Config{
 		HTTPAddr:           orDefault(getenv("VG_HTTP_ADDR"), "127.0.0.1:8080"),
 		InternalAddr:       orDefault(getenv("VG_INTERNAL_ADDR"), "127.0.0.1:9101"),
+		WorkerInternalAddr: orDefault(getenv("VG_WORKER_INTERNAL_ADDR"), "127.0.0.1:9103"),
 		SMSFixedCode:       getenv("VG_SMS_FIXED_CODE"),
 		AdminPassword:      getenv("VG_ADMIN_PASSWORD"),
 		TokenSigningKey:    getenv("VG_TOKEN_SIGNING_KEY"),
@@ -70,6 +73,7 @@ func Load(getenv func(string) string) (Config, []Violation) {
 		IMAPIURL:           orDefault(getenv("VG_IM_API_URL"), "http://127.0.0.1:5001"),
 		IMWebhookAddr:      orDefault(getenv("VG_IM_WEBHOOK_ADDR"), "127.0.0.1:9102"),
 		IMWebhookSecret:    getenv("VG_IM_WEBHOOK_SECRET"),
+		IMWebhookSigning:   getenv("VG_IM_WEBHOOK_SIGNING_SECRET"),
 		IMWebhookAllow:     getenv("VG_IM_WEBHOOK_ALLOW"),
 		AuditAnchorURL:     getenv("VG_AUDIT_ANCHOR_URL"),
 		AuditAnchorToken:   getenv("VG_AUDIT_ANCHOR_TOKEN"),
@@ -106,6 +110,9 @@ func (c Config) Validate() []Violation {
 	if _, err := splitHostPort(c.HTTPAddr); err != nil {
 		add("VG_HTTP_ADDR", err.Error())
 	}
+	if _, err := splitHostPort(c.WorkerInternalAddr); err != nil {
+		add("VG_WORKER_INTERNAL_ADDR", "must be host:port")
+	}
 	if _, err := splitHostPort(c.InternalAddr); err != nil {
 		add("VG_INTERNAL_ADDR", err.Error())
 	}
@@ -123,6 +130,9 @@ func (c Config) Validate() []Violation {
 	}
 	if s := c.IMWebhookSecret; s != "" && (len(s) < 32 || weakValues[strings.ToLower(s)] || strings.ContainsAny(s, "/?#% ")) {
 		add("VG_IM_WEBHOOK_SECRET", "when set must be at least 32 bytes of URL-safe characters and not a known default")
+	}
+	if s := c.IMWebhookSigning; s != "" && (len(s) < 32 || weakValues[strings.ToLower(s)] || s == c.IMWebhookSecret) {
+		add("VG_IM_WEBHOOK_SIGNING_SECRET", "when set must be at least 32 bytes, not a known default, and different from VG_IM_WEBHOOK_SECRET")
 	}
 	if u, err := url.Parse(c.IMAPIURL); err == nil && !isInternalHost(u.Host) {
 		add("VG_IM_API_URL", "the IM API must be loopback or a private address, never public (AD-2)")
@@ -153,6 +163,9 @@ func (c Config) Validate() []Violation {
 	}
 	if u := dsnUser(c.MySQLDSN); strings.EqualFold(u, "root") {
 		add("VG_MYSQL_DSN", "the database user must not be root; use a least-privilege application account")
+	}
+	if !isInternalHost(c.WorkerInternalAddr) {
+		add("VG_WORKER_INTERNAL_ADDR", "the worker metrics listener must bind loopback or a private address")
 	}
 	if !isInternalHost(c.InternalAddr) {
 		add("VG_INTERNAL_ADDR", "health/metrics listener must bind loopback or a private address, never a public or wildcard one")

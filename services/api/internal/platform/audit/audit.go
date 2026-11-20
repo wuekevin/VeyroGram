@@ -197,15 +197,24 @@ type HTTPSink struct {
 	Client *http.Client
 }
 
-func (s HTTPSink) Put(ctx context.Context, key string, body []byte) error {
+// url validates the base and returns the object URL.
+func (s HTTPSink) url(key string) (string, error) {
 	u, err := url.Parse(strings.TrimRight(s.Base, "/") + "/" + key)
 	if err != nil || u.Host == "" {
-		return errors.New("audit: bad anchor URL")
+		return "", errors.New("audit: bad anchor URL")
 	}
 	if u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1")) {
-		return errors.New("audit: anchor URL must be https (http only for loopback tests)")
+		return "", errors.New("audit: anchor URL must be https (http only for loopback tests)")
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), bytes.NewReader(body))
+	return u.String(), nil
+}
+
+func (s HTTPSink) Put(ctx context.Context, key string, body []byte) error {
+	u, err := s.url(key)
+	if err != nil {
+		return err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	if s.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+s.Token)
@@ -224,4 +233,72 @@ func (s HTTPSink) Put(ctx context.Context, key string, body []byte) error {
 		return fmt.Errorf("audit: anchor store answered HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// Fetcher reads anchors back from the off-host store. found=false means the object does not exist (not an error).
+type Fetcher interface {
+	Get(ctx context.Context, key string) (body []byte, found bool, err error)
+}
+
+func (s HTTPSink) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	u, err := s.url(key)
+	if err != nil {
+		return nil, false, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if s.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+s.Token)
+	}
+	c := s.Client
+	if c == nil {
+		c = &http.Client{Timeout: 15 * time.Second}
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if resp.StatusCode/100 != 2 {
+		return nil, false, fmt.Errorf("audit: anchor store answered HTTP %d", resp.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	return b, true, err
+}
+
+// AnchorReport is the outcome of comparing the current log with the last N days of off-host anchors.
+type AnchorReport struct {
+	Checked int
+	Missing []string // dates with no anchor (the daily job did not run, or someone deleted it)
+}
+
+// CheckAnchors compares the log with the anchor of each of the last `days` days (today included). Any anchor that contradicts the log is
+// ErrTampered. Missing days are reported, not failed, because the store may not have existed that long; callers decide how strict to be.
+func (l *Log) CheckAnchors(ctx context.Context, f Fetcher, days int) (AnchorReport, error) {
+	var r AnchorReport
+	if _, err := l.Verify(ctx); err != nil {
+		return r, err
+	}
+	for i := 0; i < days; i++ {
+		day := l.now().AddDate(0, 0, -i).Format("2006-01-02")
+		body, found, err := f.Get(ctx, "audit-anchor/"+day+".json")
+		if err != nil {
+			return r, fmt.Errorf("fetch anchor %s: %w", day, err)
+		}
+		if !found {
+			r.Missing = append(r.Missing, day)
+			continue
+		}
+		var a Anchor
+		if err := json.Unmarshal(body, &a); err != nil || a.HeadHash == "" {
+			return r, fmt.Errorf("%w: anchor %s is not valid", ErrTampered, day)
+		}
+		if err := l.CheckAnchor(ctx, a); err != nil {
+			return r, fmt.Errorf("anchor %s: %w", day, err)
+		}
+		r.Checked++
+	}
+	return r, nil
 }

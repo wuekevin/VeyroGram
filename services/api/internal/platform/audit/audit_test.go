@@ -271,3 +271,46 @@ func TestApplicationAccountCannotRewriteTheAuditLog(t *testing.T) {
 		t.Fatalf("the log must be untouched after all attempts: %+v %v", h, err)
 	}
 }
+
+type memFetch map[string][]byte
+
+func (m memFetch) Get(_ context.Context, k string) ([]byte, bool, error) {
+	b, ok := m[k]
+	return b, ok, nil
+}
+
+func TestCheckAnchorsComparesHistoricalAnchorsAndReportsGaps(t *testing.T) {
+	d, _ := setup(t)
+	ctx := context.Background()
+	day := func(n int) time.Time { return time.Date(2026, 11, 20+n, 3, 0, 0, 0, time.UTC) }
+	cur := day(0)
+	l := &audit.Log{DB: d, Now: func() time.Time { return cur }}
+	store := memFetch{}
+	sink := &memSink{}
+	for n, rows := range []int{3, 2, 4} { // days 20, 21, 22; day 23 gets no anchor
+		cur = day(n)
+		fill(t, l, rows)
+		if _, err := l.AnchorHead(ctx, sink); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for k, v := range sink.puts {
+		store[k] = v
+	}
+	cur = day(3)
+	r, err := l.CheckAnchors(ctx, store, 4)
+	if err != nil || r.Checked != 3 || len(r.Missing) != 1 || r.Missing[0] != "2026-11-23" {
+		t.Fatalf("report=%+v err=%v: want 3 checked and 2026-11-23 missing", r, err)
+	}
+	store["audit-anchor/2026-11-23.json"] = []byte("not json")
+	if _, err := l.CheckAnchors(ctx, store, 4); err == nil {
+		t.Fatal("a corrupt anchor must fail the check")
+	}
+	delete(store, "audit-anchor/2026-11-23.json")
+	// An old anchor (day 21, covering rows 1..5) must still be satisfied while the log only grows; truncating to before it must be caught
+	// even though today's anchor alone would also notice: remove only what day 21 vouched for.
+	d.Exec("DELETE FROM audit_log WHERE id > 4")
+	if _, err := l.CheckAnchors(ctx, store, 4); !errors.Is(err, audit.ErrTampered) {
+		t.Fatalf("truncation below an anchored row must be reported as tampering, got %v", err)
+	}
+}

@@ -45,6 +45,7 @@ def check(text):
     weak('cluster.join_token', s(get('cluster', 'join_token')))
     weak('manager.jwt_secret', s(get('manager', 'jwt_secret')))
     weak('bench.api_token', s(get('bench', 'api_token')))
+    weak('webhook.signing_secret', s(get('webhook', 'signing_secret')))
     if b(get('manager', 'auth_on')) is not True: out.append('manager.auth_on must be true')
     users = get('manager', 'users') or ''
     names = re.findall(r'username\s*=\s*"([^"]*)"', users); pws = re.findall(r'password\s*=\s*"([^"]*)"', users)

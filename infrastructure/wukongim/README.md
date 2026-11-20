@@ -13,7 +13,8 @@ python3 -I tools/render_wukongim.py infrastructure/wukongim/wukongim.prod.toml.t
 python3 -I tools/wukongim_config_check.py /etc/veyrogram/wukongim.toml     # deploy gate: defaults/secrets/plugin/MQTT/bind addresses
 python3 -I tools/exposure_scan.py --target <public-ip> --target <private-ip>   # run from OUTSIDE and from a same-subnet non-allowlisted host
 ```
-Secrets (`WK_JOIN_TOKEN`, `WK_MANAGER_JWT_SECRET`, `WK_MANAGER_PASSWORD`, `WK_BENCH_TOKEN`) must be >= 32 chars (password >= 16) and generated fresh per environment.
+The binary must be the patched build (`tools/build_wukongim.sh`), because `webhook.signing_secret` does not exist upstream; the same value goes into `VG_IM_WEBHOOK_SIGNING_SECRET` for the API.
+Secrets (`WK_WEBHOOK_SIGNING_SECRET`, `WK_JOIN_TOKEN`, `WK_MANAGER_JWT_SECRET`, `WK_MANAGER_PASSWORD`, `WK_BENCH_TOKEN`) must be >= 32 chars (password >= 16) and generated fresh per environment.
 
 ## What is and is not proven
 - Proven by tests (`tests/ops/test_exposure.py`): the checker rejects every upstream default and each mutation; the scanner flags a wildcard-bound

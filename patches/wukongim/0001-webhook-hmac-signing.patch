@@ -1,0 +1,441 @@
+From 3d9458eeea17fb773108f555eed6b2694880ea4d Mon Sep 17 00:00:00 2001
+From: wuekevin <wuekevin@gmail.com>
+Date: Sat, 21 Nov 2026 07:30:37 +0800
+Subject: [PATCH] webhook: optional HMAC-SHA256 signing
+ (webhook.signing_secret)
+
+Adds X-WK-Timestamp / X-WK-Signature to async webhooks and before_send callbacks when
+webhook.signing_secret is set; unsigned (unchanged behaviour) otherwise.
+---
+ .../server/configuration/reference.en.mdx     |  1 +
+ .../docs/server/configuration/reference.mdx   |  1 +
+ internal/app/before_send_webhook.go           |  1 +
+ internal/app/config.go                        |  2 +
+ internal/app/webhook.go                       |  5 +-
+ internal/config/build.go                      |  1 +
+ internal/config/effective_values.go           |  1 +
+ internal/config/schema.go                     |  2 +
+ internal/config/schema_help.go                |  4 ++
+ internal/infra/webhook/before_send.go         | 10 ++++
+ .../infra/webhook/before_send_signing_test.go | 46 ++++++++++++++++
+ internal/runtime/webhook/sender.go            |  8 ++-
+ .../runtime/webhook/sender_signing_test.go    | 36 +++++++++++++
+ pkg/webhooksig/webhooksig.go                  | 53 +++++++++++++++++++
+ pkg/webhooksig/webhooksig_test.go             | 41 ++++++++++++++
+ 15 files changed, 209 insertions(+), 3 deletions(-)
+ create mode 100644 internal/infra/webhook/before_send_signing_test.go
+ create mode 100644 internal/runtime/webhook/sender_signing_test.go
+ create mode 100644 pkg/webhooksig/webhooksig.go
+ create mode 100644 pkg/webhooksig/webhooksig_test.go
+
+diff --git a/docs-site/content/docs/server/configuration/reference.en.mdx b/docs-site/content/docs/server/configuration/reference.en.mdx
+index ec0fb97..5f9ab1b 100644
+--- a/docs-site/content/docs/server/configuration/reference.en.mdx
++++ b/docs-site/content/docs/server/configuration/reference.en.mdx
+@@ -301,6 +301,7 @@ retain the actual listener as `LocalAddr`, and expose the physical proxy through
+ | TOML | Environment | Type | Description |
+ | --- | --- | --- | --- |
+ | `webhook.http_addr` | `WK_WEBHOOK_HTTP_ADDR` | `string` | Target receiving JSON webhook POST requests; empty disables the webhook runtime. Redacted from diagnostic artifacts. |
++| `webhook.signing_secret` | `WK_WEBHOOK_SIGNING_SECRET` | `string` | Optional HMAC-SHA256 secret; when set every webhook (async and before_send) carries X-WK-Timestamp and X-WK-Signature so receivers can authenticate it. Redacted. |
+ | `webhook.focus_events` | `WK_WEBHOOK_FOCUS_EVENTS` | `string_list` | Limits delivery to these names: `msg.notify`, `msg.offline`, or `user.onlinestatus`; an empty list selects all supported events. |
+ | `webhook.queue_size` | `WK_WEBHOOK_QUEUE_SIZE` | `int` | Maximum webhook events queued in memory before worker execution; `0` uses `1024`. |
+ | `webhook.workers` | `WK_WEBHOOK_WORKERS` | `int` | Maximum concurrent webhook sender workers; `0` uses `16`. |
+diff --git a/docs-site/content/docs/server/configuration/reference.mdx b/docs-site/content/docs/server/configuration/reference.mdx
+index 22c5cb7..c144839 100644
+--- a/docs-site/content/docs/server/configuration/reference.mdx
++++ b/docs-site/content/docs/server/configuration/reference.mdx
+@@ -291,6 +291,7 @@ Session 的 `RemoteAddr` 使用声明的客户端地址，`LocalAddr` 保留实
+ | TOML | 环境变量 | 类型 | 说明 |
+ | --- | --- | --- | --- |
+ | `webhook.http_addr` | `WK_WEBHOOK_HTTP_ADDR` | `string` | 接收 JSON Webhook POST 的目标地址；留空则不启动 Webhook Runtime。诊断制品脱敏。 |
++| `webhook.signing_secret` | `WK_WEBHOOK_SIGNING_SECRET` | `string` | 可选的 HMAC-SHA256 密钥；设置后所有 Webhook（异步与 before_send）携带 X-WK-Timestamp 与 X-WK-Signature，供接收方鉴别。已脱敏。 |
+ | `webhook.focus_events` | `WK_WEBHOOK_FOCUS_EVENTS` | `string_list` | 只投递这些事件名；支持 `msg.notify`、`msg.offline`、`user.onlinestatus`，空列表表示全部。 |
+ | `webhook.queue_size` | `WK_WEBHOOK_QUEUE_SIZE` | `int` | Worker 执行前可在内存中排队的 Webhook 事件上限；`0` 使用默认值 `1024`。 |
+ | `webhook.workers` | `WK_WEBHOOK_WORKERS` | `int` | 并发发送 Webhook 请求的 Worker 上限；`0` 使用默认值 `16`。 |
+diff --git a/internal/app/before_send_webhook.go b/internal/app/before_send_webhook.go
+index 58f2644..4732527 100644
+--- a/internal/app/before_send_webhook.go
++++ b/internal/app/before_send_webhook.go
+@@ -69,6 +69,7 @@ func (a *App) wireBeforeSendWebhook() error {
+ 	if err != nil {
+ 		return err
+ 	}
++	client.WithSigningSecret(a.cfg.Webhook.SigningSecret)
+ 	a.beforeSendWebhook, err = message.NewBeforeSendWebhook(message.BeforeSendOptions{
+ 		Caller: client, Timeout: cfg.Timeout, OnTimeout: cfg.OnTimeout,
+ 		OnError: cfg.OnError, MaxInFlight: cfg.MaxInFlight,
+diff --git a/internal/app/config.go b/internal/app/config.go
+index 6ca3072..ce4705a 100644
+--- a/internal/app/config.go
++++ b/internal/app/config.go
+@@ -402,6 +402,8 @@ type WebhookConfig struct {
+ 	Enabled bool
+ 	// HTTPAddr receives JSON webhook POST requests as {HTTPAddr}?event=<event>.
+ 	HTTPAddr string
++	// SigningSecret, when set, signs every outbound webhook (async and before_send) with HMAC-SHA256 (see pkg/webhooksig).
++	SigningSecret string
+ 	// FocusEvents limits delivered event names. Empty means all supported webhook events are delivered.
+ 	FocusEvents []string
+ 	// QueueSize bounds accepted webhook events waiting in memory before worker execution.
+diff --git a/internal/app/webhook.go b/internal/app/webhook.go
+index 1f2bb00..ee6dfcf 100644
+--- a/internal/app/webhook.go
++++ b/internal/app/webhook.go
+@@ -52,8 +52,9 @@ func (a *App) wireWebhook() error {
+ 		return nil
+ 	}
+ 	sender := runtimewebhook.NewHTTPSender(runtimewebhook.HTTPSenderOptions{
+-		Addr:    a.cfg.Webhook.HTTPAddr,
+-		Timeout: a.cfg.Webhook.RequestTimeout,
++		Addr:          a.cfg.Webhook.HTTPAddr,
++		Timeout:       a.cfg.Webhook.RequestTimeout,
++		SigningSecret: a.cfg.Webhook.SigningSecret,
+ 	})
+ 	runtime, err := runtimewebhook.New(runtimewebhook.RuntimeOptions{
+ 		Sender:              sender,
+diff --git a/internal/config/build.go b/internal/config/build.go
+index 3dbdce6..ff7fa4e 100644
+--- a/internal/config/build.go
++++ b/internal/config/build.go
+@@ -1145,6 +1145,7 @@ func buildConfig(values map[string]string) (app.Config, error) {
+ 		cfg.Delivery.RecipientWorkerConcurrency = concurrency
+ 	}
+ 	cfg.Webhook.HTTPAddr = configValue(values, "WK_WEBHOOK_HTTP_ADDR")
++	cfg.Webhook.SigningSecret = configValue(values, "WK_WEBHOOK_SIGNING_SECRET")
+ 	if raw := configValue(values, "WK_WEBHOOK_FOCUS_EVENTS"); raw != "" {
+ 		focusEvents, err := parseStringList("WK_WEBHOOK_FOCUS_EVENTS", raw)
+ 		if err != nil {
+diff --git a/internal/config/effective_values.go b/internal/config/effective_values.go
+index 043e160..a371be2 100644
+--- a/internal/config/effective_values.go
++++ b/internal/config/effective_values.go
+@@ -146,6 +146,7 @@ func effectiveConfigValues(cfg app.Config) map[string]any {
+ 		"WK_DELIVERY_EVENT_QUEUE_SIZE":                               cfg.Delivery.EventQueueSize,
+ 		"WK_DELIVERY_RECIPIENT_WORKER_CONCURRENCY":                   cfg.Delivery.RecipientWorkerConcurrency,
+ 		"WK_WEBHOOK_HTTP_ADDR":                                       cfg.Webhook.HTTPAddr,
++		"WK_WEBHOOK_SIGNING_SECRET":                                  cfg.Webhook.SigningSecret,
+ 		"WK_WEBHOOK_FOCUS_EVENTS":                                    cfg.Webhook.FocusEvents,
+ 		"WK_WEBHOOK_QUEUE_SIZE":                                      cfg.Webhook.QueueSize,
+ 		"WK_WEBHOOK_WORKERS":                                         cfg.Webhook.Workers,
+diff --git a/internal/config/schema.go b/internal/config/schema.go
+index ec4df44..e77b753 100644
+--- a/internal/config/schema.go
++++ b/internal/config/schema.go
+@@ -237,6 +237,7 @@ var schemaFields = []fieldSpec{
+ 	{TOMLPath: "delivery.recipient_worker_concurrency", EnvKey: "WK_DELIVERY_RECIPIENT_WORKER_CONCURRENCY", Kind: kindInt, Group: "delivery", Label: "Delivery recipient worker concurrency"},
+ 
+ 	{TOMLPath: "webhook.http_addr", EnvKey: "WK_WEBHOOK_HTTP_ADDR", Kind: kindString, Group: "webhook", Label: "Webhook HTTP address", DiagnosticSensitive: true},
++	{TOMLPath: "webhook.signing_secret", EnvKey: "WK_WEBHOOK_SIGNING_SECRET", Kind: kindString, Group: "webhook", Label: "Webhook signing secret", Sensitive: true},
+ 	{TOMLPath: "webhook.focus_events", EnvKey: "WK_WEBHOOK_FOCUS_EVENTS", Kind: kindStringList, Group: "webhook", Label: "Webhook focus events"},
+ 	{TOMLPath: "webhook.queue_size", EnvKey: "WK_WEBHOOK_QUEUE_SIZE", Kind: kindInt, Group: "webhook", Label: "Webhook queue size"},
+ 	{TOMLPath: "webhook.workers", EnvKey: "WK_WEBHOOK_WORKERS", Kind: kindInt, Group: "webhook", Label: "Webhook workers"},
+@@ -435,6 +436,7 @@ func supportedConfigKeysForBuilder() []string {
+ 		"WK_DELIVERY_EVENT_QUEUE_SIZE",
+ 		"WK_DELIVERY_RECIPIENT_WORKER_CONCURRENCY",
+ 		"WK_WEBHOOK_HTTP_ADDR",
++		"WK_WEBHOOK_SIGNING_SECRET",
+ 		"WK_WEBHOOK_FOCUS_EVENTS",
+ 		"WK_WEBHOOK_QUEUE_SIZE",
+ 		"WK_WEBHOOK_WORKERS",
+diff --git a/internal/config/schema_help.go b/internal/config/schema_help.go
+index 860ca14..93a4be7 100644
+--- a/internal/config/schema_help.go
++++ b/internal/config/schema_help.go
+@@ -523,6 +523,10 @@ var schemaHelp = map[string]fieldHelp{
+ 		EN: "Target receiving JSON webhook POST requests; empty disables the webhook runtime. Redacted from diagnostic artifacts.",
+ 		ZH: "接收 JSON Webhook POST 的目标地址；留空则不启动 Webhook Runtime。诊断制品脱敏。",
+ 	},
++	"webhook.signing_secret": {
++		EN: "Optional HMAC-SHA256 secret; when set every webhook (async and before_send) carries X-WK-Timestamp and X-WK-Signature so receivers can authenticate it. Redacted.",
++		ZH: "可选的 HMAC-SHA256 密钥；设置后所有 Webhook（异步与 before_send）携带 X-WK-Timestamp 与 X-WK-Signature，供接收方鉴别。已脱敏。",
++	},
+ 	"webhook.focus_events": {
+ 		EN: "Limits delivery to these names: msg.notify, msg.offline, or user.onlinestatus; an empty list selects all supported events.",
+ 		ZH: "只投递这些事件名；支持 msg.notify、msg.offline、user.onlinestatus，空列表表示全部。",
+diff --git a/internal/infra/webhook/before_send.go b/internal/infra/webhook/before_send.go
+index d558b03..112ab0f 100644
+--- a/internal/infra/webhook/before_send.go
++++ b/internal/infra/webhook/before_send.go
+@@ -8,8 +8,10 @@ import (
+ 	"io"
+ 	"net/http"
+ 	"net/url"
++	"time"
+ 
+ 	"github.com/WuKongIM/WuKongIM/internal/usecase/message"
++	"github.com/WuKongIM/WuKongIM/pkg/webhooksig"
+ )
+ 
+ // EventBeforeSend names the synchronous business admission webhook.
+@@ -23,6 +25,13 @@ const BeforeSendResponseMaxBytes = 64 << 10
+ type BeforeSendClient struct {
+ 	target string
+ 	client *http.Client
++	secret string
++}
++
++// WithSigningSecret makes every callback carry X-WK-Timestamp/X-WK-Signature (HMAC-SHA256); an empty secret leaves callbacks unsigned.
++func (c *BeforeSendClient) WithSigningSecret(secret string) *BeforeSendClient {
++	c.secret = secret
++	return c
+ }
+ 
+ // NewBeforeSendClient validates the configured endpoint and isolates client policy.
+@@ -64,6 +73,7 @@ func (c *BeforeSendClient) BeforeSend(ctx context.Context, req message.BeforeSen
+ 		return message.BeforeSendDecision{}, err
+ 	}
+ 	httpReq.Header.Set("Content-Type", "application/json")
++	webhooksig.Apply(httpReq, c.secret, time.Now(), body)
+ 	resp, err := c.client.Do(httpReq)
+ 	if err != nil {
+ 		return message.BeforeSendDecision{}, err
+diff --git a/internal/infra/webhook/before_send_signing_test.go b/internal/infra/webhook/before_send_signing_test.go
+new file mode 100644
+index 0000000..4e171ea
+--- /dev/null
++++ b/internal/infra/webhook/before_send_signing_test.go
+@@ -0,0 +1,46 @@
++package webhook
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++	"time"
++
++	"github.com/WuKongIM/WuKongIM/internal/usecase/message"
++	"github.com/WuKongIM/WuKongIM/pkg/webhooksig"
++)
++
++func TestBeforeSendClientSignsTheExactBodyItSends(t *testing.T) {
++	var ts, sig string
++	var body []byte
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		ts, sig = r.Header.Get(webhooksig.HeaderTimestamp), r.Header.Get(webhooksig.HeaderSignature)
++		body, _ = io.ReadAll(r.Body)
++		_, _ = w.Write([]byte(`{"allow":true}`))
++	}))
++	defer srv.Close()
++	c, err := NewBeforeSendClient(srv.URL, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	req := message.BeforeSendRequest{FromUID: "u1", ChannelID: "c1", ChannelType: 2, ClientMsgNo: "m1", Payload: []byte("hi")}
++	if _, err := c.WithSigningSecret("unit-test-secret-0123456789").BeforeSend(context.Background(), req); err != nil {
++		t.Fatal(err)
++	}
++	if !webhooksig.Verify("unit-test-secret-0123456789", ts, sig, body, time.Now(), time.Minute) {
++		t.Fatalf("signature does not verify against the sent body: ts=%q sig=%q", ts, sig)
++	}
++	if webhooksig.Verify("other-secret-other-secret-00000", ts, sig, body, time.Now(), time.Minute) {
++		t.Fatal("a different secret must not verify")
++	}
++	c2, _ := NewBeforeSendClient(srv.URL, nil)
++	ts, sig = "", ""
++	if _, err := c2.BeforeSend(context.Background(), req); err != nil {
++		t.Fatal(err)
++	}
++	if ts != "" || sig != "" {
++		t.Fatal("unsigned when no secret is configured")
++	}
++}
+diff --git a/internal/runtime/webhook/sender.go b/internal/runtime/webhook/sender.go
+index e2286ad..e8d3aed 100644
+--- a/internal/runtime/webhook/sender.go
++++ b/internal/runtime/webhook/sender.go
+@@ -9,6 +9,8 @@ import (
+ 	"net/url"
+ 	"strconv"
+ 	"time"
++
++	"github.com/WuKongIM/WuKongIM/pkg/webhooksig"
+ )
+ 
+ // HTTPSenderOptions configures outbound HTTP webhook delivery.
+@@ -19,6 +21,8 @@ type HTTPSenderOptions struct {
+ 	Timeout time.Duration
+ 	// Client optionally supplies a shared HTTP client for tests or custom transports.
+ 	Client *http.Client
++	// SigningSecret, when non-empty, adds X-WK-Timestamp/X-WK-Signature (HMAC-SHA256) to every request.
++	SigningSecret string
+ }
+ 
+ // HTTPSender posts JSON webhook requests to one configured endpoint.
+@@ -26,6 +30,7 @@ type HTTPSender struct {
+ 	addr    string
+ 	timeout time.Duration
+ 	client  *http.Client
++	secret  string
+ }
+ 
+ // NewHTTPSender creates an HTTP webhook sender.
+@@ -34,7 +39,7 @@ func NewHTTPSender(opts HTTPSenderOptions) *HTTPSender {
+ 	if client == nil {
+ 		client = &http.Client{}
+ 	}
+-	return &HTTPSender{addr: opts.Addr, timeout: opts.Timeout, client: client}
++	return &HTTPSender{addr: opts.Addr, timeout: opts.Timeout, client: client, secret: opts.SigningSecret}
+ }
+ 
+ // Send posts the encoded webhook body as JSON. Only HTTP 200 is classified as success.
+@@ -62,6 +67,7 @@ func (s *HTTPSender) Send(ctx context.Context, req SendRequest) error {
+ 		return err
+ 	}
+ 	httpReq.Header.Set("Content-Type", "application/json")
++	webhooksig.Apply(httpReq, s.secret, time.Now(), req.Body)
+ 	resp, err := s.client.Do(httpReq)
+ 	if err != nil {
+ 		return err
+diff --git a/internal/runtime/webhook/sender_signing_test.go b/internal/runtime/webhook/sender_signing_test.go
+new file mode 100644
+index 0000000..6f89367
+--- /dev/null
++++ b/internal/runtime/webhook/sender_signing_test.go
+@@ -0,0 +1,36 @@
++package webhook
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++	"time"
++
++	"github.com/WuKongIM/WuKongIM/pkg/webhooksig"
++)
++
++func TestHTTPSenderSignsOnlyWhenConfigured(t *testing.T) {
++	var ts, sig string
++	var body []byte
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		ts, sig = r.Header.Get(webhooksig.HeaderTimestamp), r.Header.Get(webhooksig.HeaderSignature)
++		body, _ = io.ReadAll(r.Body)
++	}))
++	defer srv.Close()
++	req := SendRequest{Event: "msg.notify", Body: []byte(`[{"x":1}]`)}
++
++	if err := NewHTTPSender(HTTPSenderOptions{Addr: srv.URL, Timeout: time.Second, SigningSecret: "unit-test-secret-0123456789"}).Send(context.Background(), req); err != nil {
++		t.Fatal(err)
++	}
++	if !webhooksig.Verify("unit-test-secret-0123456789", ts, sig, body, time.Now(), time.Minute) {
++		t.Fatalf("signature does not verify: ts=%q sig=%q", ts, sig)
++	}
++	if err := NewHTTPSender(HTTPSenderOptions{Addr: srv.URL, Timeout: time.Second}).Send(context.Background(), req); err != nil {
++		t.Fatal(err)
++	}
++	if ts != "" || sig != "" {
++		t.Fatalf("without a secret the request must stay unsigned (backward compatible), got %q %q", ts, sig)
++	}
++}
+diff --git a/pkg/webhooksig/webhooksig.go b/pkg/webhooksig/webhooksig.go
+new file mode 100644
+index 0000000..532fa46
+--- /dev/null
++++ b/pkg/webhooksig/webhooksig.go
+@@ -0,0 +1,53 @@
++// Package webhooksig signs outbound webhook requests so a receiver can authenticate WuKongIM and reject replays.
++//
++// Scheme (VeyroGram patch): X-WK-Timestamp = unix seconds; X-WK-Signature = "v1=" + hex(HMAC-SHA256(secret, timestamp + "." + body)).
++// Receivers must compare in constant time and reject timestamps outside a small window.
++package webhooksig
++
++import (
++	"crypto/hmac"
++	"crypto/sha256"
++	"encoding/hex"
++	"net/http"
++	"strconv"
++	"time"
++)
++
++const (
++	HeaderTimestamp = "X-WK-Timestamp"
++	HeaderSignature = "X-WK-Signature"
++	version         = "v1="
++)
++
++// Sign returns the signature header value for body at ts.
++func Sign(secret string, ts time.Time, body []byte) (timestamp, signature string) {
++	timestamp = strconv.FormatInt(ts.Unix(), 10)
++	mac := hmac.New(sha256.New, []byte(secret))
++	mac.Write([]byte(timestamp))
++	mac.Write([]byte("."))
++	mac.Write(body)
++	return timestamp, version + hex.EncodeToString(mac.Sum(nil))
++}
++
++// Apply sets both headers on req when secret is non-empty; with an empty secret it leaves the request unsigned.
++func Apply(req *http.Request, secret string, now time.Time, body []byte) {
++	if secret == "" {
++		return
++	}
++	ts, sig := Sign(secret, now, body)
++	req.Header.Set(HeaderTimestamp, ts)
++	req.Header.Set(HeaderSignature, sig)
++}
++
++// Verify checks signature for body within maxSkew of now, in constant time.
++func Verify(secret, timestamp, signature string, body []byte, now time.Time, maxSkew time.Duration) bool {
++	sec, err := strconv.ParseInt(timestamp, 10, 64)
++	if err != nil || secret == "" {
++		return false
++	}
++	if d := now.Sub(time.Unix(sec, 0)); d > maxSkew || d < -maxSkew {
++		return false
++	}
++	_, want := Sign(secret, time.Unix(sec, 0), body)
++	return hmac.Equal([]byte(want), []byte(signature))
++}
+diff --git a/pkg/webhooksig/webhooksig_test.go b/pkg/webhooksig/webhooksig_test.go
+new file mode 100644
+index 0000000..932bf9f
+--- /dev/null
++++ b/pkg/webhooksig/webhooksig_test.go
+@@ -0,0 +1,41 @@
++package webhooksig
++
++import (
++	"net/http"
++	"testing"
++	"time"
++)
++
++func TestSignVerifyRoundTripAndTamperDetection(t *testing.T) {
++	now := time.Unix(1_800_000_000, 0)
++	body := []byte(`{"a":1}`)
++	ts, sig := Sign("s3cret-s3cret-s3cret", now, body)
++	if !Verify("s3cret-s3cret-s3cret", ts, sig, body, now, time.Minute) {
++		t.Fatal("valid signature rejected")
++	}
++	for name, ok := range map[string]bool{
++		"wrong secret": Verify("other", ts, sig, body, now, time.Minute),
++		"tampered":     Verify("s3cret-s3cret-s3cret", ts, sig, []byte(`{"a":2}`), now, time.Minute),
++		"replay":       Verify("s3cret-s3cret-s3cret", ts, sig, body, now.Add(2*time.Minute), time.Minute),
++		"future":       Verify("s3cret-s3cret-s3cret", ts, sig, body, now.Add(-2*time.Minute), time.Minute),
++		"bad ts":       Verify("s3cret-s3cret-s3cret", "x", sig, body, now, time.Minute),
++		"empty secret": Verify("", ts, sig, body, now, time.Minute),
++		"ts swapped":   Verify("s3cret-s3cret-s3cret", "1800000001", sig, body, now, time.Minute),
++	} {
++		if ok {
++			t.Errorf("%s must be rejected", name)
++		}
++	}
++}
++
++func TestApplyLeavesRequestUnsignedWithoutSecret(t *testing.T) {
++	r, _ := http.NewRequest(http.MethodPost, "http://x", nil)
++	Apply(r, "", time.Now(), nil)
++	if r.Header.Get(HeaderSignature) != "" || r.Header.Get(HeaderTimestamp) != "" {
++		t.Fatal("no secret => no headers")
++	}
++	Apply(r, "k", time.Unix(5, 0), []byte("b"))
++	if r.Header.Get(HeaderTimestamp) != "5" || r.Header.Get(HeaderSignature)[:3] != "v1=" {
++		t.Fatalf("headers: %v", r.Header)
++	}
++}
+-- 
+2.50.1 (Apple Git-155)
+

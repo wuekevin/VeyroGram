@@ -121,7 +121,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 			fmt.Fprintln(stderr, "VG_IM_WEBHOOK_ALLOW:", err)
 			return exitConfig
 		}
-		hook := imwebhook.Handler(imwebhook.Config{Secret: cfg.IMWebhookSecret, Allow: allow, OnReject: func(reason string) {
+		hook := imwebhook.Handler(imwebhook.Config{Secret: cfg.IMWebhookSecret, SigningSecret: cfg.IMWebhookSigning, Allow: allow, OnReject: func(reason string) {
 			pm.IMWebhookReject.Inc(reason)
 			log.Warn("im webhook rejected", "reason", reason)
 		}})
