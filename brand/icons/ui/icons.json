@@ -1,0 +1,353 @@
+{
+ "grid": 24,
+ "stroke": 1.75,
+ "count": 69,
+ "icons": [
+  {
+   "name": "chat",
+   "label_zh": "会话",
+   "label_en": "Chats"
+  },
+  {
+   "name": "contacts",
+   "label_zh": "联系人",
+   "label_en": "Contacts"
+  },
+  {
+   "name": "moments",
+   "label_zh": "动态",
+   "label_en": "Moments"
+  },
+  {
+   "name": "camera",
+   "label_zh": "相机",
+   "label_en": "Camera"
+  },
+  {
+   "name": "discover",
+   "label_zh": "发现",
+   "label_en": "Discover"
+  },
+  {
+   "name": "me",
+   "label_zh": "我",
+   "label_en": "Me"
+  },
+  {
+   "name": "search",
+   "label_zh": "搜索",
+   "label_en": "Search"
+  },
+  {
+   "name": "plus",
+   "label_zh": "新增",
+   "label_en": "Add"
+  },
+  {
+   "name": "settings",
+   "label_zh": "设置",
+   "label_en": "Settings"
+  },
+  {
+   "name": "bell",
+   "label_zh": "通知",
+   "label_en": "Notifications"
+  },
+  {
+   "name": "bell-off",
+   "label_zh": "免打扰",
+   "label_en": "Muted"
+  },
+  {
+   "name": "lock",
+   "label_zh": "锁定",
+   "label_en": "Lock"
+  },
+  {
+   "name": "shield",
+   "label_zh": "安全",
+   "label_en": "Security"
+  },
+  {
+   "name": "device",
+   "label_zh": "设备",
+   "label_en": "Devices"
+  },
+  {
+   "name": "file",
+   "label_zh": "文件",
+   "label_en": "File"
+  },
+  {
+   "name": "image",
+   "label_zh": "图片",
+   "label_en": "Image"
+  },
+  {
+   "name": "video",
+   "label_zh": "视频",
+   "label_en": "Video"
+  },
+  {
+   "name": "mic",
+   "label_zh": "语音",
+   "label_en": "Voice"
+  },
+  {
+   "name": "location",
+   "label_zh": "位置",
+   "label_en": "Location"
+  },
+  {
+   "name": "star",
+   "label_zh": "收藏",
+   "label_en": "Favorites"
+  },
+  {
+   "name": "sticker",
+   "label_zh": "表情",
+   "label_en": "Stickers"
+  },
+  {
+   "name": "tag",
+   "label_zh": "标签",
+   "label_en": "Tags"
+  },
+  {
+   "name": "group",
+   "label_zh": "群组",
+   "label_en": "Groups"
+  },
+  {
+   "name": "qr",
+   "label_zh": "二维码",
+   "label_en": "QR code"
+  },
+  {
+   "name": "call",
+   "label_zh": "通话",
+   "label_en": "Call"
+  },
+  {
+   "name": "send",
+   "label_zh": "发送",
+   "label_en": "Send"
+  },
+  {
+   "name": "more",
+   "label_zh": "更多",
+   "label_en": "More"
+  },
+  {
+   "name": "back",
+   "label_zh": "返回",
+   "label_en": "Back"
+  },
+  {
+   "name": "close",
+   "label_zh": "关闭",
+   "label_en": "Close"
+  },
+  {
+   "name": "check",
+   "label_zh": "确认",
+   "label_en": "Confirm"
+  },
+  {
+   "name": "trash",
+   "label_zh": "删除",
+   "label_en": "Delete"
+  },
+  {
+   "name": "edit",
+   "label_zh": "编辑",
+   "label_en": "Edit"
+  },
+  {
+   "name": "share",
+   "label_zh": "分享",
+   "label_en": "Share"
+  },
+  {
+   "name": "download",
+   "label_zh": "下载",
+   "label_en": "Download"
+  },
+  {
+   "name": "link",
+   "label_zh": "链接",
+   "label_en": "Link"
+  },
+  {
+   "name": "clock",
+   "label_zh": "时间",
+   "label_en": "Time"
+  },
+  {
+   "name": "flag",
+   "label_zh": "举报",
+   "label_en": "Report"
+  },
+  {
+   "name": "heart",
+   "label_zh": "点赞",
+   "label_en": "Like"
+  },
+  {
+   "name": "eye",
+   "label_zh": "可见",
+   "label_en": "Visible"
+  },
+  {
+   "name": "globe",
+   "label_zh": "语言",
+   "label_en": "Language"
+  },
+  {
+   "name": "moon",
+   "label_zh": "深色",
+   "label_en": "Dark theme"
+  },
+  {
+   "name": "sun",
+   "label_zh": "浅色",
+   "label_en": "Light theme"
+  },
+  {
+   "name": "reply",
+   "label_zh": "回复",
+   "label_en": "Reply"
+  },
+  {
+   "name": "forward",
+   "label_zh": "转发",
+   "label_en": "Forward"
+  },
+  {
+   "name": "pin",
+   "label_zh": "置顶",
+   "label_en": "Pin"
+  },
+  {
+   "name": "miniapp",
+   "label_zh": "小程序",
+   "label_en": "Mini apps"
+  },
+  {
+   "name": "dashboard",
+   "label_zh": "概览",
+   "label_en": "Overview"
+  },
+  {
+   "name": "chart",
+   "label_zh": "报表",
+   "label_en": "Reports"
+  },
+  {
+   "name": "audit",
+   "label_zh": "审计",
+   "label_en": "Audit log"
+  },
+  {
+   "name": "support",
+   "label_zh": "客服",
+   "label_en": "Support"
+  },
+  {
+   "name": "ticket",
+   "label_zh": "工单",
+   "label_en": "Tickets"
+  },
+  {
+   "name": "key",
+   "label_zh": "密钥",
+   "label_en": "Keys"
+  },
+  {
+   "name": "wallet",
+   "label_zh": "订阅",
+   "label_en": "Billing"
+  },
+  {
+   "name": "bot",
+   "label_zh": "机器人",
+   "label_en": "Bots"
+  },
+  {
+   "name": "megaphone",
+   "label_zh": "运营",
+   "label_en": "Campaigns"
+  },
+  {
+   "name": "attach",
+   "label_zh": "附件",
+   "label_en": "Attach"
+  },
+  {
+   "name": "alert",
+   "label_zh": "警告",
+   "label_en": "Warning"
+  },
+  {
+   "name": "info",
+   "label_zh": "信息",
+   "label_en": "Information"
+  },
+  {
+   "name": "check-double",
+   "label_zh": "已读",
+   "label_en": "Read"
+  },
+  {
+   "name": "offline",
+   "label_zh": "离线",
+   "label_en": "Offline"
+  },
+  {
+   "name": "chevron-right",
+   "label_zh": "向右",
+   "label_en": "Next"
+  },
+  {
+   "name": "chevron-down",
+   "label_zh": "向下",
+   "label_en": "Expand"
+  },
+  {
+   "name": "chevron-up",
+   "label_zh": "向上",
+   "label_en": "Collapse"
+  },
+  {
+   "name": "refresh",
+   "label_zh": "刷新",
+   "label_en": "Refresh"
+  },
+  {
+   "name": "screen-share",
+   "label_zh": "共享屏幕",
+   "label_en": "Share screen"
+  },
+  {
+   "name": "call-end",
+   "label_zh": "挂断",
+   "label_en": "End call"
+  },
+  {
+   "name": "video-off",
+   "label_zh": "关闭摄像头",
+   "label_en": "Camera off"
+  },
+  {
+   "name": "mic-off",
+   "label_zh": "静音",
+   "label_en": "Mute"
+  },
+  {
+   "name": "users-admin",
+   "label_zh": "成员管理",
+   "label_en": "Member admin"
+  }
+ ],
+ "status": "v0.1 hand-authored draft; designer review pending"
+}

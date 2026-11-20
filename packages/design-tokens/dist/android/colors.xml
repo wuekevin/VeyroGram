@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="vg_ink_950">#020B2A</color>
+    <color name="vg_ink_900">#0A2159</color>
+    <color name="vg_cyan_400">#19E2FC</color>
+    <color name="vg_cyan_300">#00EAFD</color>
+    <color name="vg_azure_500">#00BBFE</color>
+    <color name="vg_blue_400">#2AB0FD</color>
+    <color name="vg_indigo_500">#6171FE</color>
+    <color name="vg_violet_600">#4E2ED6</color>
+    <color name="vg_violet_500">#8548FC</color>
+    <color name="vg_magenta_400">#E458FE</color>
+    <color name="vg_bg_canvas">#F4F7FF</color>
+    <color name="vg_surface">#FFFFFF</color>
+    <color name="vg_surface_sunken">#E8EEFF</color>
+    <color name="vg_border">#CFD8F2</color>
+    <color name="vg_text_primary">#0A1230</color>
+    <color name="vg_text_secondary">#46527A</color>
+    <color name="vg_text_disabled">#8A94B8</color>
+    <color name="vg_primary">#4E2ED6</color>
+    <color name="vg_on_primary">#FFFFFF</color>
+    <color name="vg_primary_subtle">#E6E0FF</color>
+    <color name="vg_link">#3B27B8</color>
+    <color name="vg_focus_ring">#0066CC</color>
+    <color name="vg_success">#0E7A4B</color>
+    <color name="vg_warning">#8A5A00</color>
+    <color name="vg_danger">#C42B31</color>
+    <color name="vg_info">#005FA3</color>
+    <color name="vg_bubble_out">#4E2ED6</color>
+    <color name="vg_on_bubble_out">#FFFFFF</color>
+    <color name="vg_bubble_in">#FFFFFF</color>
+    <color name="vg_on_bubble_in">#0A1230</color>
+    <color name="vg_text_placeholder">#5B6690</color>
+    <color name="vg_border_strong">#7C88B3</color>
+    <color name="vg_on_bubble_out_secondary">#DCD4FF</color>
+    <color name="vg_on_bubble_in_secondary">#46527A</color>
+</resources>

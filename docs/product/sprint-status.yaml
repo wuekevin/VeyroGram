@@ -1,0 +1,230 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 11-20-2026 01:47
+last_updated: 11-20-2026 19:48
+project: VeyroGram
+project_key: NOKEY
+tracking_system: file-system
+story_location: docs/stories
+development_status:
+  epic-1: backlog
+  1-1-服务骨架-配置校验与健康探针: review
+  1-2-原生部署骨架与-ci-基线: review
+  1-3-迁移基座与幂等表: review
+  1-4-outbox-worker-与审计日志: review
+  1-5-可观测性基座-指标-日志-追踪与告警: review
+  1-6-wukongim-imgw-适配器与内部-webhook: review
+  1-7-暴露面加固与负面测试: ready-for-dev
+  1-8-wukongim-fork-补丁与升级流程: ready-for-dev
+  1-9-客户端构建基线-android-与-ios: ready-for-dev
+  1-10-客户端构建基线-web-桌面与后台: ready-for-dev
+  1-11-生成客户端与各端-im-sdk-接入: ready-for-dev
+  1-12-手机号注册与登录-服务端: ready-for-dev
+  1-13-设备-令牌与会话撤销-服务端: ready-for-dev
+  1-14-登录与设备页客户端-四端最小实现: ready-for-dev
+  1-15-单聊消息收发-服务端与-before_send-骨架: ready-for-dev
+  1-16-离线同步与多端一致-服务端: ready-for-dev
+  1-17-聊天与同步客户端-android-与-ios: ready-for-dev
+  1-18-聊天与同步客户端-web-与桌面: ready-for-dev
+  1-19-管理员初始化与-rbac-骨架-服务端: ready-for-dev
+  1-20-管理面最小界面-登录-首页-审计: ready-for-dev
+  1-21-安装向导与运维套件: ready-for-dev
+  1-22-备份实现-mysql-pitr-im-存储-对象存储: ready-for-dev
+  1-23-上游兼容与数据迁移决策: ready-for-dev
+  1-24-测试与安全门禁基座: ready-for-dev
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-内容类型注册表与未知类型降级: backlog
+  2-2-文本-图片与链接预览: backlog
+  2-3-语音消息与名片消息: backlog
+  2-4-消息撤回: backlog
+  2-5-引用-转发-合并转发与删除范围: backlog
+  2-6-输入状态-系统消息与历史分页: backlog
+  2-7-清空聊天记录与保留策略: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-好友申请与新朋友: backlog
+  3-2-黑名单: backlog
+  3-3-通讯录匹配-可搜索性与二维码: backlog
+  3-4-联系人列表-个人名片与备注: backlog
+  3-5-联系人标签: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-创建群-邀请成员与群系统消息: backlog
+  4-2-群公告-群名称与-提醒: backlog
+  4-3-群角色与权限: backlog
+  4-4-邀请确认与群黑名单: backlog
+  4-5-禁言-全员-个人-时长: backlog
+  4-6-历史可见性与禁止互加好友: backlog
+  4-7-撤回成员消息与群管理审计: backlog
+  4-8-群设置页与成员列表: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-个人资料与头像: backlog
+  5-2-隐私设置: backlog
+  5-3-设备管理-设备锁与新设备批准流程: backlog
+  5-4-密码设置与重设: backlog
+  5-5-二次验证与-passkey: backlog
+  5-6-账号注销与数据导出: backlog
+  5-7-web-桌面扫码登录与设备批准: backlog
+  5-8-通用设置-语言-深色模式-字体与通知偏好: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-设计令牌包与多端接入: backlog
+  6-2-原创图标库与-emoji-门禁: backlog
+  6-3-品牌资产集成: backlog
+  6-4-桌面端壳与专属体验: backlog
+  6-5-视觉回归基线与无障碍门禁: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-会话列表与状态: backlog
+  7-2-全局搜索与客户端本地消息搜索: backlog
+  7-3-会话媒体中心: backlog
+  7-4-推送通道-apns-fcm-与内容脱敏: backlog
+  7-5-通知偏好与多设备去重: backlog
+  7-6-国内厂商推送通道与-web-push: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-举报与申诉: backlog
+  8-2-反垃圾-限速与风控事件: backlog
+  8-3-恶意链接与危险文件检测: backlog
+  8-4-可信代理与真实客户端-ip: backlog
+  epic-8-retrospective: optional
+
+  epic-9: backlog
+  9-1-后台权限与审批流: backlog
+  9-2-用户-设备-群-消息索引查询: backlog
+  9-3-内容审核队列: backlog
+  9-4-运营配置-版本更新与公告: backlog
+  9-5-数据报表与统计口径: backlog
+  9-6-后台全新界面与状态: backlog
+  epic-9-retrospective: optional
+
+  epic-10: backlog
+  10-1-消息收藏与我的收藏: backlog
+  10-2-位置消息: backlog
+  10-3-文件上传-扫描门-预览-转发与签名下载: backlog
+  10-4-文件隔离复核与存储生命周期: backlog
+  epic-10-retrospective: optional
+
+  epic-11: backlog
+  11-1-小视频录制-选择与上传: backlog
+  11-2-小视频转码-封面-播放与转发: backlog
+  11-3-表情面板与收藏分类: backlog
+  11-4-自定义表情制作与整理: backlog
+  11-5-平台表情包商店: backlog
+  epic-11-retrospective: optional
+
+  epic-12: backlog
+  12-1-发布动态与可见性规则: backlog
+  12-2-动态列表与相册封面: backlog
+  12-3-评论-点赞-提醒与新消息入口: backlog
+  12-4-动态举报-审核与清理: backlog
+  epic-12-retrospective: optional
+
+  epic-13: backlog
+  13-1-已读未读与成员详情: backlog
+  13-2-消息编辑与版本: backlog
+  13-3-消息点赞与在线状态: backlog
+  13-4-图片编辑: backlog
+  13-5-会话内查找-日期-成员-类型-与定位跳转: backlog
+  13-6-截屏通知与撤回通知: backlog
+  epic-13-retrospective: optional
+
+  epic-14: backlog
+  14-1-应用内客服入口-技能组与自动分配: backlog
+  14-2-客服工作台-转接-快捷回复与工单: backlog
+  14-3-sla-知识库-质检与绩效: backlog
+  epic-14-retrospective: optional
+
+  epic-15: backlog
+  15-0-媒体层选型-turn-部署与可行性验证-spike: backlog
+  15-1-信令与通话状态机: backlog
+  15-2-一对一音视频通话: backlog
+  15-3-群通话-会议与屏幕共享: backlog
+  15-4-系统集成-权限与弱网自适应: backlog
+  epic-15-retrospective: optional
+
+  epic-16: backlog
+  16-1-开发者注册与主体认证: backlog
+  16-2-团队与角色: backlog
+  16-3-应用创建-域名绑定与密钥生命周期: backlog
+  16-4-oauth-授权码-pkce-与同意页: backlog
+  16-5-开放-api-限流与调用统计: backlog
+  16-6-webhook-沙箱与调试日志: backlog
+  16-7-机器人与服务账号: backlog
+  16-8-sdk-生成与版本化: backlog
+  16-9-开发者控制台: backlog
+  epic-16-retrospective: optional
+
+  epic-17: backlog
+  17-1-webview-隔离可行性验证-spike: backlog
+  17-2-小程序容器与-bridge-协议: backlog
+  17-3-自动风险扫描与恶意样本集: backlog
+  17-4-人工审核-申诉与上架: backlog
+  17-5-灰度-回滚与下架: backlog
+  17-6-小程序市场与评价举报: backlog
+  17-7-投诉与处置: backlog
+  epic-17-retrospective: optional
+
+  epic-18: backlog
+  18-1-套餐与权益服务: backlog
+  18-2-订单-支付回调与对账: backlog
+  18-3-开发者结算-条件项: backlog
+  epic-18-retrospective: optional
+
+  epic-19: backlog
+  19-1-官网与下载中心: backlog
+  19-2-客户端更新与灰度: backlog
+  19-3-官网访客客服入口与匿名访客认证: backlog
+  epic-19-retrospective: optional
+
+  epic-20: backlog
+  20-1-性能压测与容量基线: backlog
+  20-2-备份恢复与灾备演练: backlog
+  20-3-安全测试与暴露面复测: backlog
+  20-4-各端-wcag-2-1-aa-验收与第三方审计: backlog
+  20-5-许可证-sbom-与合规材料: backlog
+  20-6-签名-灰度发布与回滚演练: backlog
+  epic-20-retrospective: optional
+
+  epic-21: backlog
+  21-1-频道-广播与运营消息: backlog
+  21-2-ai-辅助-翻译-总结-客服建议: backlog
+  21-3-企业组织与租户: backlog
+  epic-21-retrospective: optional

@@ -1,0 +1,40 @@
+# VeyroGram API — Nginx site template (managed through 宝塔; render with infrastructure/scripts/render-nginx.sh).
+# ONLY the paths below are forwarded; everything else is 404 (ARCHITECTURE AD-2/AD-16/NFR-16).
+# Never add locations that proxy to WuKongIM API/manager/cluster ports, the internal health listener, Redis or MySQL.
+upstream veyrogram_api {
+    server ${UPSTREAM};
+    keepalive 32;
+}
+
+server {
+    listen ${LISTEN} ssl;
+    server_name ${SERVER_NAME};
+
+    ssl_certificate     ${TLS_CERT};
+    ssl_certificate_key ${TLS_KEY};
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    server_tokens off;
+    client_max_body_size 1m;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Whitelisted API prefix. Nginx is the edge hop, so client-supplied forwarding headers are overwritten, not appended.
+    location ^~ /v1/ {
+        proxy_pass http://veyrogram_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 30s;
+    }
+
+    # Everything else — including /healthz, /readyz, /metrics and any internal path — is not served.
+    location / {
+        return 404;
+    }
+}

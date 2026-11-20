@@ -1,0 +1,762 @@
+{
+ "login/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 32,
+  "focusables": 6,
+  "custom": []
+ },
+ "login-320reflow/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 32,
+  "focusables": 6,
+  "custom": []
+ },
+ "login/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 32,
+  "focusables": 6,
+  "custom": []
+ },
+ "login-320reflow/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 32,
+  "focusables": 6,
+  "custom": []
+ },
+ "login-en/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 32,
+  "focusables": 6,
+  "custom": []
+ },
+ "login-en/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 32,
+  "focusables": 6,
+  "custom": []
+ },
+ "login-ts200/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 33,
+  "focusables": 6,
+  "custom": []
+ },
+ "login-ts200/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 33,
+  "focusables": 6,
+  "custom": []
+ },
+ "chat-list/light": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-list-320reflow/light": {
+  "v": [],
+  "inc": [],
+  "pass": 34,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-list/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-list-320reflow/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 34,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-list-en/light": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-list-en/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-list-ts200/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 34,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-list-ts200/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 34,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat/light": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-320reflow/light": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-320reflow/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-en/light": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-en/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-ts200/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "chat-ts200/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 33,
+  "focusables": 7,
+  "custom": []
+ },
+ "group-settings/light": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 6,
+  "custom": []
+ },
+ "group-settings-320reflow/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 6,
+  "custom": []
+ },
+ "group-settings/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 6,
+  "custom": []
+ },
+ "group-settings-320reflow/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 6,
+  "custom": []
+ },
+ "group-settings-ts200/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 6,
+  "custom": []
+ },
+ "group-settings-ts200/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 6,
+  "custom": []
+ },
+ "moments-publish/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 4,
+  "custom": []
+ },
+ "moments-publish-320reflow/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 4,
+  "custom": []
+ },
+ "moments-publish/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 4,
+  "custom": []
+ },
+ "moments-publish-320reflow/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 4,
+  "custom": []
+ },
+ "call/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "call-320reflow/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "call/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "call-320reflow/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "desktop/light": {
+  "v": [],
+  "inc": [],
+  "pass": 34,
+  "focusables": 17,
+  "custom": []
+ },
+ "desktop/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 34,
+  "focusables": 17,
+  "custom": []
+ },
+ "manager/light": {
+  "v": [],
+  "inc": [],
+  "pass": 30,
+  "focusables": 4,
+  "custom": []
+ },
+ "manager/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 30,
+  "focusables": 4,
+  "custom": []
+ },
+ "developer/light": {
+  "v": [],
+  "inc": [],
+  "pass": 25,
+  "focusables": 2,
+  "custom": []
+ },
+ "developer/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 25,
+  "focusables": 2,
+  "custom": []
+ },
+ "website/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 26,
+  "focusables": 5,
+  "custom": []
+ },
+ "website/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 26,
+  "focusables": 5,
+  "custom": []
+ },
+ "states/light": {
+  "v": [],
+  "inc": [],
+  "pass": 23,
+  "focusables": 2,
+  "custom": []
+ },
+ "states-320reflow/light": {
+  "v": [],
+  "inc": [],
+  "pass": 23,
+  "focusables": 2,
+  "custom": []
+ },
+ "states/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 23,
+  "focusables": 2,
+  "custom": []
+ },
+ "states-320reflow/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 23,
+  "focusables": 2,
+  "custom": []
+ },
+ "device-approve/light": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "device-approve-320reflow/light": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "device-approve/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "device-approve-320reflow/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "device-approve-ts200/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 4,
+  "custom": []
+ },
+ "device-approve-ts200/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 4,
+  "custom": []
+ },
+ "devices/light": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "devices-320reflow/light": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "devices/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "devices-320reflow/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "qr-login-desktop/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 35,
+  "focusables": 2,
+  "custom": []
+ },
+ "qr-login-desktop/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 35,
+  "focusables": 2,
+  "custom": []
+ },
+ "qr-confirm/light": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "qr-confirm-320reflow/light": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "qr-confirm/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "qr-confirm-320reflow/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 4,
+  "custom": []
+ },
+ "miniapp-consent/light": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 3,
+  "custom": []
+ },
+ "miniapp-consent-320reflow/light": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 3,
+  "custom": []
+ },
+ "miniapp-consent/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 3,
+  "custom": []
+ },
+ "miniapp-consent-320reflow/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 3,
+  "custom": []
+ },
+ "miniapp-market/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 33,
+  "focusables": 10,
+  "custom": []
+ },
+ "miniapp-market-320reflow/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 33,
+  "focusables": 10,
+  "custom": []
+ },
+ "miniapp-market/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 33,
+  "focusables": 10,
+  "custom": []
+ },
+ "miniapp-market-320reflow/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 33,
+  "focusables": 10,
+  "custom": []
+ },
+ "support-workbench/light": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 6,
+  "custom": []
+ },
+ "support-workbench/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 6,
+  "custom": []
+ },
+ "message-read-detail/light": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 0,
+  "custom": []
+ },
+ "message-read-detail-320reflow/light": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 0,
+  "custom": []
+ },
+ "message-read-detail/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 0,
+  "custom": []
+ },
+ "message-read-detail-320reflow/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 28,
+  "focusables": 0,
+  "custom": []
+ },
+ "message-read-detail-ts200/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 28,
+  "focusables": 0,
+  "custom": []
+ },
+ "message-read-detail-ts200/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 28,
+  "focusables": 0,
+  "custom": []
+ },
+ "message-edit/light": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 5,
+  "custom": []
+ },
+ "message-edit-320reflow/light": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 5,
+  "custom": []
+ },
+ "message-edit/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 5,
+  "custom": []
+ },
+ "message-edit-320reflow/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 5,
+  "custom": []
+ },
+ "settings/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 8,
+  "custom": []
+ },
+ "settings-320reflow/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 8,
+  "custom": []
+ },
+ "settings/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 8,
+  "custom": []
+ },
+ "settings-320reflow/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 8,
+  "custom": []
+ },
+ "settings-en/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 8,
+  "custom": []
+ },
+ "settings-en/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 8,
+  "custom": []
+ },
+ "settings-ts200/light": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 8,
+  "custom": []
+ },
+ "settings-ts200/dark": {
+  "v": [],
+  "inc": [
+   "color-contrast"
+  ],
+  "pass": 29,
+  "focusables": 8,
+  "custom": []
+ },
+ "tablet-chat/light": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 8,
+  "custom": []
+ },
+ "tablet-chat/dark": {
+  "v": [],
+  "inc": [],
+  "pass": 32,
+  "focusables": 8,
+  "custom": []
+ }
+}

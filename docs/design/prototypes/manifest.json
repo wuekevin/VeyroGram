@@ -1,0 +1,240 @@
+[
+ {
+  "page": "login",
+  "width": 390,
+  "height": 844,
+  "file": "login.html",
+  "tag": ""
+ },
+ {
+  "page": "login",
+  "width": 390,
+  "height": 844,
+  "file": "login.en.html",
+  "tag": "-en"
+ },
+ {
+  "page": "login",
+  "width": 390,
+  "height": 844,
+  "file": "login.html",
+  "tag": "-ts200",
+  "query": "&ts=2"
+ },
+ {
+  "page": "chat-list",
+  "width": 390,
+  "height": 844,
+  "file": "chat-list.html",
+  "tag": ""
+ },
+ {
+  "page": "chat-list",
+  "width": 390,
+  "height": 844,
+  "file": "chat-list.en.html",
+  "tag": "-en"
+ },
+ {
+  "page": "chat-list",
+  "width": 390,
+  "height": 844,
+  "file": "chat-list.html",
+  "tag": "-ts200",
+  "query": "&ts=2"
+ },
+ {
+  "page": "chat",
+  "width": 390,
+  "height": 844,
+  "file": "chat.html",
+  "tag": ""
+ },
+ {
+  "page": "chat",
+  "width": 390,
+  "height": 844,
+  "file": "chat.en.html",
+  "tag": "-en"
+ },
+ {
+  "page": "chat",
+  "width": 390,
+  "height": 844,
+  "file": "chat.html",
+  "tag": "-ts200",
+  "query": "&ts=2"
+ },
+ {
+  "page": "group-settings",
+  "width": 390,
+  "height": 844,
+  "file": "group-settings.html",
+  "tag": ""
+ },
+ {
+  "page": "group-settings",
+  "width": 390,
+  "height": 844,
+  "file": "group-settings.html",
+  "tag": "-ts200",
+  "query": "&ts=2"
+ },
+ {
+  "page": "moments-publish",
+  "width": 390,
+  "height": 844,
+  "file": "moments-publish.html",
+  "tag": ""
+ },
+ {
+  "page": "call",
+  "width": 390,
+  "height": 844,
+  "file": "call.html",
+  "tag": ""
+ },
+ {
+  "page": "desktop",
+  "width": 1440,
+  "height": 900,
+  "file": "desktop.html",
+  "tag": ""
+ },
+ {
+  "page": "manager",
+  "width": 1440,
+  "height": 900,
+  "file": "manager.html",
+  "tag": ""
+ },
+ {
+  "page": "developer",
+  "width": 1440,
+  "height": 900,
+  "file": "developer.html",
+  "tag": ""
+ },
+ {
+  "page": "website",
+  "width": 1440,
+  "height": 900,
+  "file": "website.html",
+  "tag": ""
+ },
+ {
+  "page": "states",
+  "width": 390,
+  "height": 1400,
+  "file": "states.html",
+  "tag": ""
+ },
+ {
+  "page": "device-approve",
+  "width": 390,
+  "height": 844,
+  "file": "device-approve.html",
+  "tag": ""
+ },
+ {
+  "page": "device-approve",
+  "width": 390,
+  "height": 844,
+  "file": "device-approve.html",
+  "tag": "-ts200",
+  "query": "&ts=2"
+ },
+ {
+  "page": "devices",
+  "width": 390,
+  "height": 844,
+  "file": "devices.html",
+  "tag": ""
+ },
+ {
+  "page": "qr-login-desktop",
+  "width": 1100,
+  "height": 700,
+  "file": "qr-login-desktop.html",
+  "tag": ""
+ },
+ {
+  "page": "qr-confirm",
+  "width": 390,
+  "height": 844,
+  "file": "qr-confirm.html",
+  "tag": ""
+ },
+ {
+  "page": "miniapp-consent",
+  "width": 390,
+  "height": 844,
+  "file": "miniapp-consent.html",
+  "tag": ""
+ },
+ {
+  "page": "miniapp-market",
+  "width": 390,
+  "height": 844,
+  "file": "miniapp-market.html",
+  "tag": ""
+ },
+ {
+  "page": "support-workbench",
+  "width": 1440,
+  "height": 900,
+  "file": "support-workbench.html",
+  "tag": ""
+ },
+ {
+  "page": "message-read-detail",
+  "width": 390,
+  "height": 844,
+  "file": "message-read-detail.html",
+  "tag": ""
+ },
+ {
+  "page": "message-read-detail",
+  "width": 390,
+  "height": 844,
+  "file": "message-read-detail.html",
+  "tag": "-ts200",
+  "query": "&ts=2"
+ },
+ {
+  "page": "message-edit",
+  "width": 390,
+  "height": 844,
+  "file": "message-edit.html",
+  "tag": ""
+ },
+ {
+  "page": "settings",
+  "width": 390,
+  "height": 844,
+  "file": "settings.html",
+  "tag": ""
+ },
+ {
+  "page": "settings",
+  "width": 390,
+  "height": 844,
+  "file": "settings.en.html",
+  "tag": "-en"
+ },
+ {
+  "page": "settings",
+  "width": 390,
+  "height": 844,
+  "file": "settings.html",
+  "tag": "-ts200",
+  "query": "&ts=2"
+ },
+ {
+  "page": "tablet-chat",
+  "width": 834,
+  "height": 1112,
+  "file": "tablet-chat.html",
+  "tag": ""
+ }
+]

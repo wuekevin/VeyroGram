@@ -1,0 +1,16 @@
+# DRAFT — not yet run on CI. Design/token gates required by docs/design/DESIGN-SYSTEM.md.
+name: design-checks
+on: [push, pull_request]
+jobs:
+  tokens-and-icons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Build tokens (fails if any WCAG contrast rule fails)
+        run: python3 -I packages/design-tokens/build.py
+      - name: Build icons (XML validity)
+        run: python3 -I tools/build_icons.py
+      - name: No Emoji in navigation UI source
+        run: python3 -I tools/lint_no_emoji_nav.py apps

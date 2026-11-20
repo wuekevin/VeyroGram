@@ -1,0 +1,50 @@
+# Prometheus alert rules (Story 1.5). Thresholds are conservative starting points, NOT tuned against real traffic.
+# Route "severity: page" alerts to the operations channel in Alertmanager (configuration lives with the operator, not in this repo).
+groups:
+  - name: veyrogram-api
+    rules:
+      - alert: VeyroGramApiDown
+        expr: up{job="veyrogram-api"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "veyrogram-api is not being scraped (down or /metrics token wrong)" }
+      - alert: VeyroGramHighErrorRate
+        expr: sum(rate(vg_http_requests_total{class="5xx"}[5m])) / clamp_min(sum(rate(vg_http_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels: { severity: page }
+        annotations: { summary: "More than 5% of HTTP requests return 5xx" }
+      - alert: VeyroGramSlowRequests
+        expr: histogram_quantile(0.95, sum(rate(vg_http_request_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 10m
+        labels: { severity: ticket }
+        annotations: { summary: "p95 request latency above 1s" }
+      - alert: VeyroGramDeliveryLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(vg_message_delivery_latency_seconds_bucket[5m])) by (le)) > 2
+        for: 10m
+        labels: { severity: page }
+        annotations: { summary: "p95 message delivery latency above 2s" }
+      - alert: VeyroGramDbPoolSaturated
+        expr: vg_db_pool_in_use_connections >= 0.9 * vg_db_pool_open_connections and vg_db_pool_open_connections > 0
+        for: 5m
+        labels: { severity: ticket }
+        annotations: { summary: "DB connection pool is above 90% in use" }
+      - alert: VeyroGramOutboxBacklog
+        expr: vg_outbox_pending > 1000
+        for: 10m
+        labels: { severity: page }
+        annotations: { summary: "Outbox backlog above 1000 pending rows" }
+      - alert: VeyroGramPushErrors
+        expr: sum(rate(vg_push_errors_total{provider!="none"}[10m])) > 0.5
+        for: 10m
+        labels: { severity: ticket }
+        annotations: { summary: "Push provider errors above 0.5/s" }
+      - alert: VeyroGramImWebhookRejected
+        expr: sum(increase(vg_im_webhook_rejected_total[5m])) > 0
+        for: 0m
+        labels: { severity: page }
+        annotations: { summary: "IM callback listener rejected requests (bad secret/source/shape): possible probing or a misconfigured IM" }
+      - alert: VeyroGramImgwErrors
+        expr: sum(rate(vg_imgw_calls_total{result="error"}[5m])) > 0.1
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "imgw calls to the IM API are failing (IM down or overloaded)" }

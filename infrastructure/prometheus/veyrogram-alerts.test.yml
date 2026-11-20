@@ -1,0 +1,63 @@
+rule_files: [veyrogram-alerts.yml]
+evaluation_interval: 1m
+tests:
+  - name: api down fires after 2m
+    interval: 1m
+    input_series:
+      - series: 'up{job="veyrogram-api"}'
+        values: '1 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: VeyroGramApiDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: VeyroGramApiDown
+        exp_alerts:
+          - exp_labels: { severity: page, job: veyrogram-api }
+            exp_annotations: { summary: "veyrogram-api is not being scraped (down or /metrics token wrong)" }
+  - name: 5xx ratio above 5 percent for 10m fires; healthy traffic does not
+    interval: 1m
+    input_series:
+      - series: 'vg_http_requests_total{method="GET",class="5xx"}'
+        values: '0+10x20'
+      - series: 'vg_http_requests_total{method="GET",class="2xx"}'
+        values: '0+90x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: VeyroGramHighErrorRate
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: "More than 5% of HTTP requests return 5xx" }
+  - name: low error ratio stays silent
+    interval: 1m
+    input_series:
+      - series: 'vg_http_requests_total{method="GET",class="5xx"}'
+        values: '0+1x20'
+      - series: 'vg_http_requests_total{method="GET",class="2xx"}'
+        values: '0+99x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: VeyroGramHighErrorRate
+        exp_alerts: []
+  - name: any IM webhook rejection pages immediately
+    interval: 1m
+    input_series:
+      - series: 'vg_im_webhook_rejected_total{reason="bad_secret"}'
+        values: '0 0 3 3 3'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: VeyroGramImWebhookRejected
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: "IM callback listener rejected requests (bad secret/source/shape): possible probing or a misconfigured IM" }
+  - name: outbox backlog
+    interval: 1m
+    input_series:
+      - series: 'vg_outbox_pending'
+        values: '2000x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: VeyroGramOutboxBacklog
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: "Outbox backlog above 1000 pending rows" }

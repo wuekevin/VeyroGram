@@ -1,0 +1,77 @@
+# Merge gates (Story 1.2). Make every job a *required status check* in the repository's branch protection settings — that setting lives in
+# GitHub, not in this file. Mirrors tools/ci_local.sh. DRAFT: not yet run on GitHub Actions.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+env:
+  GOTOOLCHAIN: go1.26.10      # WuKongIM requires go1.26.10; keep the business service on the same toolchain
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/api } }
+    services:
+      mysql:
+        image: mysql:8.0            # integration tests need real MySQL 8.0 (not 8.4); CI-only container, production is native
+        env: { MYSQL_ROOT_PASSWORD: ci-only-root, MYSQL_ROOT_HOST: '%' }
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-only-root" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26.10', cache-dependency-path: services/api/go.mod }
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - name: fetch pinned WuKongIM (SHA recorded in tools/build_wukongim.sh)
+        working-directory: .
+        run: |
+          pin=$(sed -n 's/^PIN=//p' tools/build_wukongim.sh)
+          mkdir -p upstream && git clone --quiet https://github.com/WuKongIM/WuKongIM.git upstream/WuKongIM
+          git -C upstream/WuKongIM checkout --quiet "$pin"
+          bash tools/build_wukongim.sh "$RUNNER_TEMP/wukongim"
+      - name: test (race) incl. AD-1 import-direction check and WuKongIM contract tests
+        env: { VG_TEST_MYSQL_DSN: 'root:ci-only-root@tcp(127.0.0.1:3306)/' }
+        run: VG_TEST_WUKONGIM_BIN="$RUNNER_TEMP/wukongim" go test -race -count=1 ./...
+  alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: promtool check and unit tests
+        run: |
+          v=2.55.1
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${v}/prometheus-${v}.linux-amd64.tar.gz" | tar xz -C "$RUNNER_TEMP"
+          cd infrastructure/prometheus
+          "$RUNNER_TEMP/prometheus-${v}.linux-amd64/promtool" check rules veyrogram-alerts.yml
+          "$RUNNER_TEMP/prometheus-${v}.linux-amd64/promtool" test rules veyrogram-alerts.test.yml
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26.10' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pyyaml
+      - run: sudo apt-get update && sudo apt-get install -y nginx openssl curl && sudo systemctl stop nginx || true
+      - run: python3 -I tools/lint_infra.py
+      - run: python3 -I tests/ops/test_lint_infra.py
+      - run: python3 -I tests/ops/test_openapi_diff.py
+      - name: OpenAPI diff vs base branch (breaking changes need a MAJOR bump or an ADR)
+        run: python3 -I tools/openapi_diff.py --dir packages/contracts/openapi --base-ref "origin/${{ github.base_ref || 'main' }}"
+      - run: bash tests/ops/test_deploy.sh
+      - run: bash tests/ops/test_nginx.sh
+  design:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python3 -I packages/design-tokens/build.py
+      - run: python3 -I tools/build_icons.py
+      - run: python3 -I tools/lint_no_emoji_nav.py apps

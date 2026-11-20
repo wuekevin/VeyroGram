@@ -1,0 +1,9 @@
+{
+ "states": {
+  "default": "icons/<name>.svg",
+  "selected": "states/<name>-selected.svg",
+  "disabled": "default at opacity .38 (token: text-disabled)",
+  "pressed": "default at opacity .72",
+  "badge": "dot r=4 at (19,5) in token danger/primary, 1.5px canvas-colored ring"
+ }
+}

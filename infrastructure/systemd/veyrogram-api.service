@@ -1,0 +1,49 @@
+# VeyroGram API — native systemd unit (no containers in production; see docs/architecture AD-14).
+# Install: copy to /etc/systemd/system/, create the service account (see infrastructure/scripts/README.md), then `systemctl enable --now veyrogram-api`.
+[Unit]
+Description=VeyroGram API
+Documentation=https://github.com/ (internal) docs/architecture/ARCHITECTURE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=veyrogram
+Group=veyrogram
+# Secrets live only in this root-owned, 0640 file (root:veyrogram); never in the unit or the repository.
+EnvironmentFile=/etc/veyrogram/api.env
+ExecStart=/opt/veyrogram/api/current/veyrogram-api
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+StateDirectory=veyrogram
+LogsDirectory=veyrogram
+UMask=0077
+LimitNOFILE=65536
+MemoryMax=1G
+TasksMax=4096
+
+# Sandboxing: the process needs outbound/inbound TCP only.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
