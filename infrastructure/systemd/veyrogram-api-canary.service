@@ -1,0 +1,51 @@
+# VeyroGram API CANARY instance — a second copy of the API running the release under test, for a share of traffic (infrastructure/scripts/canary.sh).
+# Not enabled at boot: canary.sh starts and stops it. It reads api.env first, then canary.env, which moves every listener to its own address and turns the admin plane off.
+# (derived from veyrogram-api.service: keep the hardening identical)
+# VeyroGram API — native systemd unit (no containers in production; see docs/architecture AD-14).
+# Install: install.sh copies this unit and /etc/veyrogram/canary.env; never `enable` it.
+[Unit]
+Description=VeyroGram API (canary)
+Documentation=https://github.com/ (internal) docs/architecture/ARCHITECTURE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=veyrogram
+Group=veyrogram
+# Secrets live only in this root-owned, 0640 file (root:veyrogram); never in the unit or the repository.
+EnvironmentFile=/etc/veyrogram/api.env
+EnvironmentFile=/etc/veyrogram/canary.env
+ExecStart=/opt/veyrogram/api/canary/veyrogram-api
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+StateDirectory=veyrogram
+LogsDirectory=veyrogram
+UMask=0077
+LimitNOFILE=65536
+MemoryMax=1G
+TasksMax=4096
+
+# Sandboxing: the process needs outbound/inbound TCP only.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+

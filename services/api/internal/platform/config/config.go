@@ -165,7 +165,29 @@ func Load(getenv func(string) string) (Config, []Violation) {
 	default:
 		vs = append(vs, Violation{"VG_AUTH_SMS_LOGIN", "must be true or false"})
 	}
+	vs = append(vs, placeholderViolations(getenv)...)
 	return c, append(vs, c.Validate()...)
+}
+
+// configVars lists every variable Load reads (config_test.go keeps it complete). The installer writes @@GEN:...@@ and @@FILL:...@@ markers into the
+// environment templates; a value that still carries one was never filled in, and the service must not start on it.
+var configVars = []string{
+	"VG_ADMIN_PASSWORD", "VG_ADMIN_TOTP_KEY", "VG_AUDIT_ANCHOR_TOKEN", "VG_AUDIT_ANCHOR_URL", "VG_AUTH_SMS_LOGIN", "VG_CORS_ALLOWED_ORIGINS", "VG_DEBUG", "VG_ENV",
+	"VG_HTTP_ADDR", "VG_IM_API_PEER_URLS", "VG_IM_API_URL", "VG_IM_TOKEN_KEY", "VG_IM_WEBHOOK_ADDR", "VG_IM_WEBHOOK_ALLOW", "VG_IM_WEBHOOK_SECRET",
+	"VG_IM_WEBHOOK_SIGNING_SECRET", "VG_INTERNAL_ADDR", "VG_MANAGER_ADDR", "VG_MANAGER_ALLOW", "VG_MANAGER_ENABLED", "VG_MANAGER_PUBLIC_RATE",
+	"VG_MESSAGE_RATE_LIMIT", "VG_MESSAGE_RATE_WINDOW_SECONDS", "VG_METRICS_TOKEN", "VG_MYSQL_DSN", "VG_PHONE_HASH_KEY", "VG_REDIS_ADDR", "VG_REDIS_PASSWORD",
+	"VG_SMSBAO_BASE_URL", "VG_SMSBAO_KEY", "VG_SMSBAO_USER", "VG_SMS_FIXED_CODE", "VG_SMS_HTTP_TOKEN", "VG_SMS_HTTP_URL", "VG_SMS_PROVIDER", "VG_TOKEN_KEYS",
+	"VG_TOKEN_SIGNING_KEY", "VG_TRUSTED_PROXIES", "VG_WORKER_INTERNAL_ADDR",
+}
+
+func placeholderViolations(getenv func(string) string) []Violation {
+	var vs []Violation
+	for _, k := range configVars {
+		if v := getenv(k); strings.Contains(v, "@@FILL:") || strings.Contains(v, "@@GEN:") {
+			vs = append(vs, Violation{k, "still contains an unfilled install placeholder (a FILL or GEN marker); fill it in or re-render the file"})
+		}
+	}
+	return vs
 }
 
 // Strict reports whether the insecure-default checks apply (staging and production).
@@ -203,7 +225,7 @@ func (c Config) Validate() []Violation {
 		if _, err := clientip.ParseTrusted(c.ManagerAllow); err != nil {
 			add("VG_MANAGER_ALLOW", err.Error())
 		}
-		if c.ManagerAddr == c.HTTPAddr || c.ManagerAddr == c.InternalAddr || c.ManagerAddr == c.IMWebhookAddr {
+		if c.ManagerAddr == c.HTTPAddr || c.ManagerAddr == c.InternalAddr || c.ManagerAddr == c.IMWebhookAddr || c.ManagerAddr == c.WorkerInternalAddr {
 			add("VG_MANAGER_ADDR", "the admin plane must have its own listener, not share an address with another one")
 		}
 	}

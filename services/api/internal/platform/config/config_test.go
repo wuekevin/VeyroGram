@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -214,5 +216,46 @@ func TestIMClusterPeerURLsAreValidated(t *testing.T) {
 		if _, vs := Load(env(m)); !strings.Contains(keys(vs), "VG_IM_API_PEER_URLS") {
 			t.Errorf("%q must be rejected: %s", bad, keys(vs))
 		}
+	}
+}
+
+// configVars must name every variable Load reads, or an unfilled install placeholder in a forgotten one would slip through.
+func TestConfigVarsListIsComplete(t *testing.T) {
+	src, err := os.ReadFile("config.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := map[string]bool{}
+	for _, v := range configVars {
+		have[v] = true
+	}
+	for _, m := range regexp.MustCompile(`getenv\("(VG_[A-Z0-9_]+)"\)`).FindAllStringSubmatch(string(src), -1) {
+		if !have[m[1]] {
+			t.Errorf("%s is read by Load but missing from configVars", m[1])
+		}
+	}
+}
+
+func TestUnfilledInstallPlaceholdersAreRejected(t *testing.T) {
+	for _, v := range []string{"@@FILL:SMS key@@", "k1:@@GEN:B64URL32@@", "user:@@FILL:password@@@tcp(127.0.0.1:3306)/d"} {
+		m := good()
+		m["VG_METRICS_TOKEN"] = v
+		if _, vs := Load(env(m)); !strings.Contains(keys(vs), "VG_METRICS_TOKEN") {
+			t.Errorf("%q must be rejected as an unfilled placeholder: %s", v, keys(vs))
+		}
+	}
+	m := good()
+	m["VG_MYSQL_DSN"] = "u:@@GEN:URLSAFE32@@@tcp(127.0.0.1:3306)/d"
+	if _, vs := Load(env(m)); !strings.Contains(keys(vs), "VG_MYSQL_DSN") {
+		t.Errorf("a placeholder inside the DSN must be rejected: %s", keys(vs))
+	}
+}
+
+func TestManagerCannotShareTheWorkerAddress(t *testing.T) {
+	m := good()
+	m["VG_MANAGER_ENABLED"], m["VG_MANAGER_ADDR"], m["VG_WORKER_INTERNAL_ADDR"] = "true", "127.0.0.1:9103", "127.0.0.1:9103"
+	m["VG_ADMIN_TOTP_KEY"] = "0123456789abcdef0123456789abcdef-strong"
+	if _, vs := Load(env(m)); !strings.Contains(keys(vs), "VG_MANAGER_ADDR") {
+		t.Errorf("the admin listener and the worker's internal listener would collide on one host: %s", keys(vs))
 	}
 }

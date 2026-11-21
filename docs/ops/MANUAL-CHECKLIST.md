@@ -159,7 +159,7 @@ nginx -t && systemctl reload nginx
 
 ---
 
-### C7. 管理面与首个管理员（Story 1.19）
+### C8. 管理面与首个管理员（Story 1.19）
 管理面是**独立监听、独立主机名**，默认关闭。上线步骤：
 ```
 # 1) /etc/veyrogram/api.env（0600，root:veyrogram）增加；密钥自己生成，不要发给我：
@@ -168,7 +168,7 @@ VG_MANAGER_ADDR=127.0.0.1:9103
 VG_ADMIN_TOTP_KEY=$(openssl rand -hex 32)        # 管理员 TOTP 密钥的加密密钥；丢失 = 所有管理员需重新绑定，备份到密码管理器
 # VG_MANAGER_ALLOW=203.0.113.0/24                  # 强烈建议：只允许办公网/VPN 访问管理面
 # 2) 创建首个管理员（只能做一次；口令不经命令行参数，走环境变量或标准输入；必须强口令）：
-sudo -u veyrogram bash -c 'set -a; . /etc/veyrogram/api.env; read -rsp "管理员口令: " VG_ADMIN_BOOTSTRAP_PASSWORD; echo; export VG_ADMIN_BOOTSTRAP_PASSWORD; /opt/veyrogram/api/current/veyrogram-api admin bootstrap -username <你的管理员名>'
+sudo systemd-run --wait --pipe -p EnvironmentFile=/etc/veyrogram/api.env -p User=veyrogram /opt/veyrogram/api/current/veyrogram-api admin bootstrap -username <你的管理员名> -password-stdin   # 输入口令后回车；Mac 或已走 C9 向导时这一步已经做过
 #    命令会打印 TOTP 密钥和 otpauth URI——只显示一次，立刻用手机验证器（Google Authenticator/1Password 等）添加。
 # 3) 为管理面单独申请证书和域名（例如 manager.<域名>），用独立站点模板：
 SERVER_NAME=manager.<域名> TLS_CERT=... TLS_KEY=... UPSTREAM=127.0.0.1:9103 infrastructure/scripts/render-nginx.sh infrastructure/nginx/veyrogram-manager.conf.template /www/server/panel/vhost/nginx/veyrogram-manager.conf
@@ -179,6 +179,41 @@ systemctl restart veyrogram-api
 - **验证**：用错误口令、空口令、`admin`/`Password123!` 这类弱口令运行 bootstrap，应被拒绝；再运行一次 bootstrap（即使删除了任何 `install.lock` 文件）应提示 already initialised；`GET /v1/manager/me` 不带令牌应为 401；审计：`GET /v1/manager/audit/verify` 应返回 `ok: true`。
 - **告警**：`VeyroGramAdminProbing`（管理面被拒绝请求激增）；管理员被锁定会写入审计 `admin.locked`。
 - **还没有的（诚实说明）**：高危动作目前只需要 owner + 理由并写审计，AD-3 提到的“高危动作需第二人审批”没有做；管理员忘记口令/丢失验证器的恢复流程没有做（目前只能由另一位 owner 禁用后重建，或直接在数据库里处理，所以至少保留两个 owner）；管理面 Web 界面属于 Manager 前端 Story。
+
+### C9. 安装向导、灰度发布与健康探针（Story 1.21）
+Mac 上已经用真实二进制、真实 MySQL/Redis、真实 Nginx 演练过全部脚本和命令；下面这些**只能在干净的 Linux 主机上验证**（账号、systemd、journald、logrotate、真实网络）。
+```
+# 1) 在主机上 checkout 仓库后，以 root 运行安装脚本（四选一：development / test / staging / production；每个环境单独一台或单独一套端口、库、Redis）：
+sudo infrastructure/scripts/install.sh production
+#    它会：创建 veyrogram 服务账号；建 /etc/veyrogram(0750)、/opt/veyrogram/api、/var/lib/veyrogram、/var/log/veyrogram；
+#    在**本机**生成所有随机密钥写入 /etc/veyrogram/api.env（0640 root:veyrogram，不打印、不外传）；安装 systemd 单元、journald 限额、logrotate；
+#    已存在的 api.env 永远不会被覆盖。运行结束会列出你必须手填的项（@@FILL:...@@）：数据库连接串、短信账号与密钥。
+# 2) 手填那几项（用编辑器，不要写进 shell 历史），再做预检——它会逐项列出阻断项和修复办法：
+sudo systemd-run --wait --pipe -p EnvironmentFile=/etc/veyrogram/api.env /opt/veyrogram/api/current/veyrogram-api install preflight -install -fresh -ports 127.0.0.1:5001,127.0.0.1:5100,127.0.0.1:5200
+#    （用 systemd-run 读环境文件：连接串里有 & 号，直接 source 会被 shell 当成后台符号。第一次还没有发布版本时，用构建出的二进制路径代替 current/。需 root：预检会核对账号、目录、systemd。）
+# 3) 用迁移账号（不是应用账号，见 C3）跑向导：配置检查 → 口令策略 → 预检 → 是否已安装 → 迁移 → 首个管理员：
+sudo systemd-run --wait --pipe -p EnvironmentFile=/etc/veyrogram/api.env -p User=veyrogram env 'VG_MYSQL_DSN=vg_migrator:<迁移账号口令>@tcp(127.0.0.1:3306)/veyrogram?parseTime=true' /opt/veyrogram/api/current/veyrogram-api install run -username <管理员名> -password-stdin
+#    （env 放在命令前面，覆盖 api.env 里的应用账号连接串；口令从标准输入读，输入后回车。）
+#    再跑一次、或删掉任何 install.lock 后再跑，都必须被拒绝（退出码 4）。
+# 4) 日志与探针：
+sudo systemctl enable --now veyrogram-probe.timer          # 每分钟一次；输出到 node_exporter 的 textfile 目录
+journalctl --disk-usage ; ls /etc/logrotate.d/veyrogram ; sudo logrotate -d /etc/logrotate.d/veyrogram
+sudo -u veyrogram /opt/veyrogram/api/current/veyrogram-api probe      # 全部 ok 时退出码 0；停掉 worker 后应显示 DOWN worker 且退出码 1
+```
+- **必须核对的主机设置**（预检会报，这里是原因）：① Redis `maxmemory-policy noeviction`（令牌黑名单在 Redis 里，被淘汰就等于撤销失效）；② Redis `requirepass`；③ MySQL `sql_mode` 含 `STRICT_TRANS_TABLES`、`log_bin=ON` 且 `binlog_format=ROW`（1.22 的按时间点恢复依赖它）；④ 时钟 NTP 同步（管理员验证码依赖准确时间）；⑤ `/var/lib/node_exporter/textfile_collector` 目录存在且 node_exporter 启用了 textfile collector，否则探针告警 `VeyroGramProbeStale` 会一直响。
+- **灰度发布演练**（需要第二个实例的端口：`/etc/veyrogram/canary.env` 已由 install.sh 生成，默认 8081/9111/9112）：
+  ```
+  # Nginx 站点用 render-nginx.sh 渲染（模板已带灰度成员的 include，没有灰度时不起作用）；宝塔的重载命令不是 nginx -s reload 时：
+  export VG_NGINX_RELOAD_CMD='/etc/init.d/nginx reload'
+  infrastructure/scripts/canary.sh start <binary> <version> 10     # 启动灰度实例并把约 10% 的 /v1 请求导给它
+  infrastructure/scripts/canary.sh status ; VG_METRICS_TOKEN=... infrastructure/scripts/canary.sh check
+  infrastructure/scripts/canary.sh promote                          # 或 abort；promote 失败会自动回滚
+  ```
+  灰度期间新旧两个版本**同时**连同一个 MySQL：迁移必须向前兼容（先扩展、下个版本再收缩），否则不要用灰度。IM 长连接不走灰度，只有 `/v1` HTTP 请求分流。
+- **待你决定（PRD OQ-7）**：环境如何划分主机——同机多套（模板里 staging 已把端口整体偏移 10000、用独立库和独立 Redis 实例）还是 staging 单独一台。我没有替你定，两种都能用现有模板。
+- **没有覆盖的（诚实说明）**：install.sh 在 Mac 上只能用演练模式（不创建账号、不改属主、不动 systemd/journald）；真实 `useradd`、`systemctl daemon-reload`、journald 重启、logrotate 实际轮转以及 Nginx 经 宝塔 的重载只能在这台主机上验证；灰度的流量比例在 Mac 上是用真实 Nginx 加桩进程测的（20% 的配置实测 400 个请求恰好 80 个落到灰度），不是真实流量。
+
+---
 
 ## D. 审计锚点的异地存储（防“控制了数据库的人改历史”）
 

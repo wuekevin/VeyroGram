@@ -68,3 +68,13 @@ groups:
         for: 0m
         labels: { severity: page }
         annotations: { summary: "Many refused requests on the admin plane (unauthenticated, forbidden or outside the allowlist): someone is probing it. Check the audit log for admin.login.failed / admin.locked" }
+      - alert: VeyroGramProbeDown
+        expr: veyrogram_probe_up == 0
+        for: 3m
+        labels: { severity: page }
+        annotations: { summary: "The health probe has found {{ $labels.target }} not answering for 3 minutes (api = readiness incl. MySQL, worker, im). Run `veyrogram-api probe` on the host and check the unit's journal" }
+      - alert: VeyroGramProbeStale
+        expr: time() - veyrogram_probe_timestamp_seconds > 300
+        for: 0m
+        labels: { severity: page }
+        annotations: { summary: "The health probe has not reported for over 5 minutes: veyrogram-probe.timer stopped or the host's textfile collector is not being scraped. Without it a down API is only seen by the scrape alert" }

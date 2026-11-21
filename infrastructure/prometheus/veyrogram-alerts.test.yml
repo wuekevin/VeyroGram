@@ -130,3 +130,33 @@ tests:
       - eval_time: 6m
         alertname: VeyroGramAdminProbing
         exp_alerts: []
+  - name: probe sees a target down
+    interval: 1m
+    input_series:
+      - series: 'veyrogram_probe_up{target="api"}'
+        values: '1 1 0 0 0 0 0 0'
+      - series: 'veyrogram_probe_up{target="im"}'
+        values: '1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: VeyroGramProbeDown
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: VeyroGramProbeDown
+        exp_alerts:
+          - exp_labels: { severity: page, target: api }
+            exp_annotations: { summary: "The health probe has found api not answering for 3 minutes (api = readiness incl. MySQL, worker, im). Run `veyrogram-api probe` on the host and check the unit's journal" }
+  - name: a stopped probe is itself an alert
+    interval: 1m
+    input_series:
+      - series: 'veyrogram_probe_timestamp_seconds'
+        values: '0 60 120 180 180 180 180 180 180 180'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: VeyroGramProbeStale
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: VeyroGramProbeStale
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: "The health probe has not reported for over 5 minutes: veyrogram-probe.timer stopped or the host's textfile collector is not being scraped. Without it a down API is only seen by the scrape alert" }

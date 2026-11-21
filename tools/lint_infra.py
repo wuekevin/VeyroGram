@@ -22,7 +22,8 @@ def lint_systemd(text, name='unit'):
                   ('ProtectSystem', {'strict', 'full'}), ('LockPersonality', {'yes', 'true'}), ('RestrictSUIDSGID', {'yes', 'true'})):
         if g(k).lower() not in ok: out.append(f'{name}: {k} must be one of {sorted(ok)}')
     if not g('EnvironmentFile'): out.append(f'{name}: secrets must come from EnvironmentFile')
-    if re.search(r'/opt/veyrogram/[^ ]+/current/', g('ExecStart')) is None: out.append(f'{name}: ExecStart must run from the versioned .../current/ symlink')
+    link = 'canary' if name.endswith('-canary.service') else 'current'  # the canary instance runs the release under test, through its own symlink
+    if re.search(r'/opt/veyrogram/[^ ]+/' + link + r'/', g('ExecStart')) is None: out.append(f'{name}: ExecStart must run from the versioned .../{link}/ symlink')
     if g('CapabilityBoundingSet') != '': out.append(f'{name}: CapabilityBoundingSet must be empty (drop all capabilities)')
     for e in kv.get('Environment', []):
         if re.search(r'(PASSWORD|SECRET|TOKEN|KEY)\w*=\S+', e, re.I): out.append(f'{name}: secret-looking value in Environment= (use EnvironmentFile)')

@@ -1,0 +1,39 @@
+# One health probe pass (`veyrogram-api probe`): api readiness, worker, IM. A failing pass shows as a failed unit and as veyrogram_probe_up 0 in the textfile
+# metrics. Started by veyrogram-probe.timer. (derived from veyrogram-api.service: same hardening.)
+[Unit]
+Description=VeyroGram health probe
+Documentation=https://github.com/ (internal) docs/architecture/ARCHITECTURE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=veyrogram
+Group=veyrogram
+EnvironmentFile=/etc/veyrogram/api.env
+ExecStart=/opt/veyrogram/api/current/veyrogram-api probe -textfile /var/lib/node_exporter/textfile_collector/veyrogram_probe.prom
+UMask=0022
+TimeoutStartSec=30
+ReadWritePaths=/var/lib/node_exporter/textfile_collector
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+

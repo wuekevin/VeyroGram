@@ -37,6 +37,19 @@ a signing key shorter than 32 bytes or a known default, wildcard CORS, debug mod
 | `VG_MESSAGE_RATE_LIMIT` / `VG_MESSAGE_RATE_WINDOW_SECONDS` | `30` / `10` | Per-sender send limit enforced by the send-policy gate (before_send hook and `/v1/messages`), counted in Redis; `0` disables. A Redis outage skips the rule (fail-open) and is counted in `vg_message_gate_total{rule="ratelimit",result="skipped"}` |
 | `VG_IM_TOKEN_KEY` | — | >= 32 bytes, different from `VG_PHONE_HASH_KEY`; derives WuKongIM connection tokens (rotated by revocations, never stored) |
 | `VG_TRUSTED_PROXIES` | — | CIDRs/IPs whose `X-Forwarded-For` is honoured (the Nginx host); empty = trust nobody (AD-16) |
+| `VG_WORKER_INTERNAL_ADDR` | `127.0.0.1:9103` | The worker's own internal listener. **Must differ from `VG_MANAGER_ADDR`** when both run on one host (the production template uses `9104` for this reason) |
+| `VG_INSTALL_LOCK` | — | Path the install wizard writes a human-readable "installed at" note to. Informational only: nothing reads it to decide anything; the installed state is in the database |
+| `VG_ENV_FILE` | `/etc/veyrogram/api.env` | Where `install preflight -install` looks for the environment file (mode and owner are checked) |
+| `VG_PROBE_CANARY_URL` | — | Optional readiness URL of a running canary; adds a `canary` target to `veyrogram-api probe` |
+
+## Operational commands (Story 1.21)
+| Command | What it does |
+|---|---|
+| `install preflight [-install] [-fresh] [-json] [-ports a,b]` | Checks the host and the servers and lists blockers with fixes; exit 3 if any blocks. Reads the same `VG_*` variables as the service. MySQL must be 8.0 (MariaDB is refused), Redis 7+; in staging/production Redis must require a password and use `noeviction` (the token deny-list lives there), MySQL must be in strict mode, the env file must not be world-readable |
+| `install run -username U [-password-stdin] [-fresh]` | Wizard: configuration → password policy → preflight → already-installed check → migrations → first administrator. Nothing is written before the first three pass. Exit 4 when the database says the installation is initialised (deleting `install.lock` changes nothing) |
+| `probe [-textfile FILE]` | api readiness (includes MySQL), worker, IM; exit 1 if any is down |
+
+A value in the environment that still contains an install marker (`@@FILL:…@@`, `@@GEN:…@@`) is a configuration error: the service does not start on a file nobody finished filling in.
 
 ## Develop
 ```

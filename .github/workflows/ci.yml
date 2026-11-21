@@ -63,13 +63,15 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install pyyaml
-      - run: sudo apt-get update && sudo apt-get install -y nginx openssl curl && sudo systemctl stop nginx || true
+      - run: sudo apt-get update && sudo apt-get install -y nginx openssl curl logrotate && sudo systemctl stop nginx || true
       - run: python3 -I tools/lint_infra.py
       - run: python3 -I tests/ops/test_lint_infra.py
       - run: python3 -I tests/ops/test_openapi_diff.py
       - name: OpenAPI diff vs base branch (breaking changes need a MAJOR bump or an ADR)
         run: python3 -I tools/openapi_diff.py --dir packages/contracts/openapi --base-ref "origin/${{ github.base_ref || 'main' }}"
       - run: bash tests/ops/test_deploy.sh
+      - run: bash tests/ops/test_install.sh
+      - run: bash tests/ops/test_canary.sh
       - run: bash tests/ops/test_nginx.sh
       - name: exposure gate - fetch pinned WuKongIM and run config-check + live port scan (fails if any internal port is reachable)
         run: |

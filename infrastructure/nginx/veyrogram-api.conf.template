@@ -2,7 +2,9 @@
 # ONLY the paths below are forwarded; everything else is 404 (ARCHITECTURE AD-2/AD-16/NFR-16).
 # Never add locations that proxy to WuKongIM API/manager/cluster ports, the internal health listener, Redis or MySQL.
 upstream veyrogram_api {
-    server ${UPSTREAM};
+    server ${UPSTREAM} weight=100;
+    # Canary members, written by infrastructure/scripts/canary.sh. A wildcard include that matches nothing is valid, so no file means no canary.
+    include ${CANARY_INCLUDE};
     keepalive 32;
 }
 

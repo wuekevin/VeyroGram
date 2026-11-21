@@ -1,0 +1,19 @@
+# VeyroGram log rotation. Install to /etc/logrotate.d/veyrogram (install.sh does).
+#
+# The API and worker log JSON to stdout, which systemd sends to journald; journald's own limits are in journald-veyrogram.conf.
+# What lands in files are the directories systemd creates for the services (LogsDirectory=): the IM server's logs and anything an operator redirects there.
+# copytruncate because the IM server cannot be asked to reopen its files; at most a few lines around the rotation instant can be lost, which is the
+# trade-off accepted for not restarting the messaging server. Logs hold no message bodies or secrets (see the log redaction tests).
+/var/log/veyrogram/*.log /var/log/veyrogram-im/*.log {
+    daily
+    rotate 14
+    maxsize 200M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    dateext
+    su veyrogram veyrogram
+    create 0640 veyrogram veyrogram
+}

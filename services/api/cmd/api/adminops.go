@@ -30,25 +30,38 @@ func runAdmin(args []string, getenv func(string) string, cfg config.Config, pool
 		fmt.Fprintln(stderr, "-username is required")
 		return 2
 	}
+	password, err := bootstrapPassword(getenv, *stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	return bootstrapAdmin(cfg, pool, *username, password, stderr)
+}
+
+// bootstrapPassword reads the first administrator's password: from standard input, or else from VG_ADMIN_BOOTSTRAP_PASSWORD.
+func bootstrapPassword(getenv func(string) string, fromStdin bool) (string, error) {
+	if !fromStdin {
+		return getenv("VG_ADMIN_BOOTSTRAP_PASSWORD"), nil
+	}
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil && line == "" {
+		return "", errors.New("no password on standard input")
+	}
+	return strings.TrimRight(line, "\r\n"), nil
+}
+
+// bootstrapAdmin creates the first administrator and prints the one-time authenticator secret. Shared by `admin bootstrap` and the install wizard.
+func bootstrapAdmin(cfg config.Config, pool *sql.DB, username, password string, stderr io.Writer) int {
 	if len(cfg.AdminTOTPKey) < 32 {
 		fmt.Fprintln(stderr, "VG_ADMIN_TOTP_KEY (at least 32 characters) is required: it encrypts the administrator's TOTP secret")
 		return exitConfig
-	}
-	password := getenv("VG_ADMIN_BOOTSTRAP_PASSWORD")
-	if *stdin {
-		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-		if err != nil && line == "" {
-			fmt.Fprintln(stderr, "no password on standard input")
-			return 2
-		}
-		password = strings.TrimRight(line, "\r\n")
 	}
 	svc, err := adminService(cfg, pool)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return exitConfig
 	}
-	prov, err := svc.Bootstrap(context.Background(), *username, password)
+	prov, err := svc.Bootstrap(context.Background(), username, password)
 	var weak *domain.WeakPasswordError
 	switch {
 	case errors.As(err, &weak):
@@ -67,7 +80,7 @@ func runAdmin(args []string, getenv func(string) string, cfg config.Config, pool
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
-	fmt.Printf("first administrator %q created (role owner).\n", *username)
+	fmt.Printf("first administrator %q created (role owner).\n", username)
 	fmt.Println("Add this to an authenticator app NOW; it is shown only once and is required for the first sign-in:")
 	fmt.Println("  secret:", prov.Secret)
 	fmt.Println("  uri:   ", prov.URI)

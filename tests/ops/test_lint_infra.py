@@ -13,6 +13,12 @@ class Systemd(unittest.TestCase):
     def test_protect_system_required(self): self.assertTrue(L.lint_systemd(UNIT.replace('ProtectSystem=strict', 'ProtectSystem=no')))
     def test_inline_secret_rejected(self): self.assertTrue(L.lint_systemd(UNIT + '\nEnvironment=VG_TOKEN_SIGNING_KEY=abcdef\n'))
     def test_capabilities_must_be_dropped(self): self.assertTrue(L.lint_systemd(UNIT.replace('CapabilityBoundingSet=', 'CapabilityBoundingSet=CAP_NET_BIND_SERVICE')))
+    def test_canary_unit_may_use_the_canary_symlink_but_nothing_else(self):
+        canary = UNIT.replace('/opt/veyrogram/api/current/veyrogram-api', '/opt/veyrogram/api/canary/veyrogram-api')
+        self.assertEqual([], L.lint_systemd(canary, 'veyrogram-api-canary.service'))
+        self.assertTrue(L.lint_systemd(UNIT.replace('/opt/veyrogram/api/current/veyrogram-api', '/usr/local/bin/api'), 'veyrogram-api-canary.service'))
+        self.assertTrue(L.lint_systemd(canary, 'veyrogram-api.service'))  # the live unit must not run the canary link
+
     def test_execstart_must_use_current_symlink(self): self.assertTrue(L.lint_systemd(UNIT.replace('/opt/veyrogram/api/current/veyrogram-api', '/usr/local/bin/api')))
 
 class Nginx(unittest.TestCase):

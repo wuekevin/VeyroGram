@@ -42,6 +42,10 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		switch args[0] {
 		case "migrate":
 			return runMigrate(args[1:], getenv, stderr)
+		case "install":
+			return runInstall(args[1:], getenv, os.Stdout, stderr)
+		case "probe":
+			return runProbe(args[1:], getenv, os.Stdout, stderr)
 		case "worker", "audit", "outbox", "db", "sync", "admin":
 			return runOps(args, getenv, stderr)
 		}
