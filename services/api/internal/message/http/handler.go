@@ -66,6 +66,7 @@ const IMMuted uint8 = 25
 // Reason mapping (the contract the clients' SENDACK handling is tested against):
 //
 //	128 unsupported_channel 422 | 129 sender_unavailable 403 | 130 recipient_unavailable 404 | 131 invalid_payload 400 | 132 payload_too_large 413
+//	133 rate_limited 429 (Retry-After)
 //	200 policy_unavailable 503 (retry later, same client_msg_no) | IM native 25 muted 403 | any other IM refusal: message_rejected 403
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var rej *domain.Rejected
@@ -88,6 +89,9 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 				httpx.WriteError(w, r, http.StatusNotFound, "recipient_unavailable", "the recipient cannot receive messages")
 			case domain.ReasonInvalidPayload:
 				httpx.WriteError(w, r, http.StatusBadRequest, "invalid_payload", "the message payload is invalid")
+			case domain.ReasonRateLimited:
+				w.Header().Set("Retry-After", "10")
+				httpx.WriteError(w, r, http.StatusTooManyRequests, "rate_limited", "you are sending too fast, slow down")
 			case domain.ReasonPayloadTooLarge:
 				httpx.WriteError(w, r, http.StatusRequestEntityTooLarge, "payload_too_large", "the message is too large")
 			default:

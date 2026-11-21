@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"veyrogram/api/internal/message/domain"
+	"veyrogram/api/internal/message/ports"
 )
 
 type accounts struct {
@@ -100,5 +101,66 @@ func TestUnrestrictedRuleFailureIsSkippedNotFatal(t *testing.T) {
 	g.Rules = g.Rules[:1]
 	if v := g.Evaluate(context.Background(), msg("alice", "bob", okText)); !v.Allow {
 		t.Fatalf("with only a failing optional rule the send is allowed: %+v", v)
+	}
+}
+
+type fakeLimiter struct {
+	n   int
+	err error
+}
+
+func (f *fakeLimiter) Allow(_ context.Context, subject string, limit int, _ time.Duration) (bool, time.Duration, error) {
+	f.n++
+	return f.n <= limit, time.Second, f.err
+}
+
+func TestRateRuleDeniesOverLimitAndFailsOpenWhenCounterIsDown(t *testing.T) {
+	rl := &fakeLimiter{}
+	g := &Gate{Rules: []Rule{RateRule(rl, 2, time.Second)}}
+	for i, want := range []bool{true, true, false, false} {
+		if v := g.Evaluate(context.Background(), msg("alice", "bob", okText)); v.Allow != want || (!want && v.Reason != domain.ReasonRateLimited) {
+			t.Fatalf("send %d: %+v", i+1, v)
+		}
+	}
+	// system notices are never rate limited
+	if v := g.Evaluate(context.Background(), msg(domain.SystemUID, "bob", okText)); !v.Allow {
+		t.Fatal("system sender must bypass")
+	}
+	// counter store down: the optional rule is skipped (and counted), messaging continues
+	var skipped bool
+	g = &Gate{Rules: []Rule{RateRule(&fakeLimiter{err: errors.New("redis down")}, 2, time.Second)}, Observe: func(r, res string) { skipped = skipped || res == "skipped" }}
+	if v := g.Evaluate(context.Background(), msg("alice", "bob", okText)); !v.Allow || !skipped {
+		t.Fatalf("fail-open expected: %+v skipped=%v", v, skipped)
+	}
+	// disabled
+	g = &Gate{Rules: []Rule{RateRule(rl, 0, time.Second)}}
+	if v := g.Evaluate(context.Background(), msg("alice", "bob", okText)); !v.Allow {
+		t.Fatal("limit 0 disables the rule")
+	}
+}
+
+type recRefs struct{ got []ports.Ref }
+
+func (r *recRefs) Record(_ context.Context, ref ports.Ref) error {
+	r.got = append(r.got, ref)
+	return nil
+}
+
+func TestRecordNotifiedCanonicalisesAndSkipsNonBusinessMessages(t *testing.T) {
+	refs := &recRefs{}
+	s := &Service{Refs: refs, Tenant: 1}
+	err := s.RecordNotified(context.Background(), []Notified{
+		{MessageID: 1, MessageSeq: 1, ClientMsgNo: "a", FromUID: "alice", ChannelID: "bob@alice", ChannelType: 1, Timestamp: 100},
+		{MessageID: 2, MessageSeq: 2, ClientMsgNo: "b", FromUID: "bob", ChannelID: "alice@bob", ChannelType: 1, Timestamp: 101},
+		{MessageID: 3, MessageSeq: 3, ClientMsgNo: "n", FromUID: domain.SystemUID, ChannelID: "alice@vg_system", ChannelType: 1}, // system notice
+		{MessageID: 4, MessageSeq: 4, ClientMsgNo: "g", FromUID: "alice", ChannelID: "g1", ChannelType: 2},                       // group
+		{MessageID: 5, MessageSeq: 5, ClientMsgNo: "x", FromUID: "mallory", ChannelID: "alice@bob", ChannelType: 1},              // not a participant
+		{MessageID: 0, MessageSeq: 6, ClientMsgNo: "z", FromUID: "alice", ChannelID: "bob@alice", ChannelType: 1},                // no id
+	})
+	if err != nil || len(refs.got) != 2 {
+		t.Fatalf("only the two person messages are recorded: %v %+v", err, refs.got)
+	}
+	if refs.got[0].ChannelID != "alice@bob" || refs.got[1].ChannelID != "alice@bob" {
+		t.Fatalf("both directions of one conversation share one canonical id: %+v", refs.got)
 	}
 }

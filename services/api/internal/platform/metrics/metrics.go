@@ -232,6 +232,7 @@ type Platform struct {
 	OutboxLag       Gauge
 	IMGWCalls       Counter   // op, result
 	IMGWDuration    Histogram // op
+	GateDuration    Histogram // whole send-policy evaluation (the synchronous before_send budget, NFR-9)
 	IMWebhookReject Counter   // reason
 	OutboxEvents    Counter   // topic, result (done|retry|dead) - fed by the worker process
 	DenyDegraded    Counter   // access tokens served without a deny-list check (Redis down/unconfigured): revocation falls back to the token TTL
@@ -252,6 +253,7 @@ func NewPlatform(r *Registry) *Platform {
 		RiskErrors:      r.Counter("vg_risk_errors_total", "Risk-control errors (placeholder).", "rule"),
 		OpenAPIErrors:   r.Counter("vg_openapi_errors_total", "Open API errors (placeholder).", "code"),
 		IMGWCalls:       r.Counter("vg_imgw_calls_total", "Calls from the imgw adapter to the IM API by op and result.", "op", "result"),
+		GateDuration:    r.Histogram("vg_message_gate_duration_seconds", "Send-policy gate evaluation latency (the IM waits for this synchronously).", []float64{.001, .0025, .005, .01, .025, .05, .1, .25, .5}),
 		IMGWDuration:    r.Histogram("vg_imgw_call_duration_seconds", "imgw adapter call latency including retries.", []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5}, "op"),
 		IMWebhookReject: r.Counter("vg_im_webhook_rejected_total", "IM callbacks rejected before reaching policy (bad secret, source, shape).", "reason"),
 		OutboxEvents:    r.Counter("vg_outbox_events_total", "Outbox events handled by the worker, by topic and result.", "topic", "result"),

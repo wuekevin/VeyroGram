@@ -101,12 +101,13 @@ func (s *Service) MarkRead(ctx context.Context, uid, peer string) error {
 	return nil
 }
 
-// PutDraft stores or (with empty content) clears the caller's draft for the conversation with peer. Last writer wins; the returned version orders it.
-func (s *Service) PutDraft(ctx context.Context, uid, peer, content string) (uint64, error) {
+// PutDraft stores or (with empty content) clears the caller's draft for the conversation with peer. Without baseVersion the last writer wins; with it, a draft
+// that moved on since that version is not overwritten (*ports.ConflictError) so two devices never silently clobber each other. The returned version orders the write.
+func (s *Service) PutDraft(ctx context.Context, uid, peer, content string, baseVersion *uint64) (uint64, error) {
 	if !domain.ValidUID(peer) || peer == domain.SystemUID || !domain.ValidDraft(content) {
 		return 0, domain.ErrInvalidInput
 	}
-	return s.Store.PutDraft(ctx, s.Tenant, uid, peer, domain.ChannelPerson, content, s.now())
+	return s.Store.PutDraft(ctx, s.Tenant, uid, peer, domain.ChannelPerson, content, baseVersion, s.now())
 }
 
 func (s *Service) PutSetting(ctx context.Context, uid, peer string, pinned, muted bool) (uint64, error) {

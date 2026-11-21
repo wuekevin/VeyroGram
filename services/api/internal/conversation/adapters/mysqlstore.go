@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"veyrogram/api/internal/conversation/ports"
@@ -40,13 +41,25 @@ func notify(ctx context.Context, tx *sql.Tx, now time.Time, tenant uint64, uid, 
 	return err
 }
 
-func (s *MySQLStore) PutDraft(ctx context.Context, tenant uint64, uid, peer string, channelType uint8, content string, now time.Time) (uint64, error) {
+func (s *MySQLStore) PutDraft(ctx context.Context, tenant uint64, uid, peer string, channelType uint8, content string, baseVersion *uint64, now time.Time) (uint64, error) {
 	tenant = tenantOr1(tenant)
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
+	if baseVersion != nil {
+		// lock the row (if any) so the check and the write are one decision
+		var cur ports.Draft
+		err := tx.QueryRowContext(ctx, "SELECT content, deleted, version FROM draft WHERE tenant_id=? AND user_uid=? AND channel_id=? AND channel_type=? FOR UPDATE", tenant, uid, peer, channelType).Scan(&cur.Content, &cur.Deleted, &cur.Version)
+		if err == nil && cur.Version > *baseVersion {
+			cur.Peer, cur.ChannelType = peer, channelType
+			return 0, &ports.ConflictError{Current: cur}
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return 0, err
+		}
+	}
 	v, err := nextVersion(ctx, tx, tenant, uid)
 	if err != nil {
 		return 0, err
@@ -113,4 +126,14 @@ func (s *MySQLStore) State(ctx context.Context, tenant uint64, uid string, since
 		out = append(out, it)
 	}
 	return out, rows.Err()
+}
+
+// PurgeTombstones deletes cleared-draft tombstones last changed before cutoff and returns how many went. A device that has been offline for longer
+// than the retention window simply never learns those deletions; its next full sync (since=0) is authoritative, so nothing resurrects.
+func (s *MySQLStore) PurgeTombstones(ctx context.Context, cutoff time.Time) (int64, error) {
+	res, err := s.DB.ExecContext(ctx, "DELETE FROM draft WHERE deleted=1 AND updated_at < ?", cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

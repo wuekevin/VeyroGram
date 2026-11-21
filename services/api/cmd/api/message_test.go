@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"regexp"
 	"sort"
@@ -42,10 +43,11 @@ func TestSingleChatOverRealIMWithBeforeSendGate(t *testing.T) {
 		t.Skip("VG_TEST_REDIS_ADDR not set")
 	}
 	hookAddr := freeAddr(t)
-	im := testim.Start(t, "http://"+hookAddr+"/im/webhook/"+msgHookSecret)
+	hookURL := "http://" + hookAddr + "/im/webhook/" + msgHookSecret
+	im := testim.StartOpts(t, testim.Options{BeforeSendURL: hookURL, NotifyURL: hookURL})
 	d, dsn, bin := migrated(t)
 	extra := []string{"VG_REDIS_ADDR=" + redisAddr, "VG_IM_API_URL=" + im.APIURL, "VG_METRICS_TOKEN=metrics-token-0123456789abcdef",
-		"VG_IM_WEBHOOK_SECRET=" + msgHookSecret, "VG_IM_WEBHOOK_ADDR=" + hookAddr}
+		"VG_IM_WEBHOOK_SECRET=" + msgHookSecret, "VG_IM_WEBHOOK_ADDR=" + hookAddr, "VG_MESSAGE_RATE_LIMIT=100000"}
 	if r, err := denylist.Open(context.Background(), redisAddr, ""); err == nil {
 		r.C.Del(context.Background(), "vg:deny:dev:1:1", "vg:deny:dev:1:2")
 		r.Close()
@@ -267,6 +269,28 @@ func TestSingleChatOverRealIMWithBeforeSendGate(t *testing.T) {
 		t.Errorf("P95 SENDACK %v exceeds the gate budget on a quiet machine", lat[56])
 	}
 
+	// 7d. message_ref: messages the client sent straight to the IM are recorded from msg.notify; API-sent ones are recorded by both paths but only once;
+	// system notices are not business messages.
+	eventually(t, "msg.notify feeds message_ref", 10*time.Second, func() bool {
+		var id uint64
+		return d.QueryRow("SELECT message_id FROM message_ref WHERE client_msg_no=?", n1).Scan(&id) == nil
+	})
+	var refID, refSeq uint64
+	var refChan, refFrom string
+	var cnt int
+	if err := d.QueryRow("SELECT COUNT(*), MIN(message_id), MIN(message_seq), MIN(channel_id), MIN(from_uid) FROM message_ref WHERE client_msg_no=?", n1).Scan(&cnt, &refID, &refSeq, &refChan, &refFrom); err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 1 || fmt.Sprint(refID) != a1.ID || refSeq != a1.Seq || refFrom != uidA || refChan != domainPersonChannel(uidA, uidB) {
+		t.Fatalf("client-sent message must be recorded once with the IM's ids: count=%d id=%d seq=%d chan=%q from=%q (ack %+v)", cnt, refID, refSeq, refChan, refFrom, a1)
+	}
+	if err := d.QueryRow("SELECT COUNT(*) FROM message_ref WHERE client_msg_no=?", n2).Scan(&cnt); err != nil || cnt != 1 {
+		t.Fatalf("an API message is recorded by the API and by msg.notify but must stay one row: %d %v", cnt, err)
+	}
+	if err := d.QueryRow("SELECT COUNT(*) FROM message_ref WHERE from_uid='vg_system' OR client_msg_no LIKE 'devnotice:%' OR client_msg_no LIKE 'syncnotice:%'").Scan(&cnt); err != nil || cnt != 0 {
+		t.Fatalf("system notices must not be recorded: %d %v", cnt, err)
+	}
+
 	// 8. every evaluation is visible in metrics
 	_, m := get(t, "http://"+p.internal+"/metrics", "Bearer metrics-token-0123456789abcdef")
 	for _, want := range []string{`vg_message_gate_total{rule="accounts",result="allow"}`, `vg_message_gate_total{rule="payload",result="deny"}`} {
@@ -295,5 +319,188 @@ func TestBeforeSendFailsClosedWhenBusinessServiceIsDownOrDatabaseIsGone(t *testi
 func TestSystemUIDIsTheSameInIdentityAndMessage(t *testing.T) {
 	if identitydomain.SystemUID != msgdomain.SystemUID {
 		t.Fatalf("identity %q vs message %q", identitydomain.SystemUID, msgdomain.SystemUID)
+	}
+}
+
+// Per-sender rate limit (AD-21 "rate-limit" rule) through the real IM hook and the API; other senders and system notices are unaffected.
+func TestSendRateLimitThroughRealIMAndAPI(t *testing.T) {
+	redisAddr := os.Getenv("VG_TEST_REDIS_ADDR")
+	if redisAddr == "" {
+		t.Skip("VG_TEST_REDIS_ADDR not set")
+	}
+	hookAddr := freeAddr(t)
+	im := testim.Start(t, "http://"+hookAddr+"/im/webhook/"+msgHookSecret)
+	d, dsn, bin := migrated(t)
+	extra := []string{"VG_REDIS_ADDR=" + redisAddr, "VG_IM_API_URL=" + im.APIURL, "VG_METRICS_TOKEN=metrics-token-0123456789abcdef",
+		"VG_IM_WEBHOOK_SECRET=" + msgHookSecret, "VG_IM_WEBHOOK_ADDR=" + hookAddr, "VG_MESSAGE_RATE_LIMIT=5", "VG_MESSAGE_RATE_WINDOW_SECONDS=60"}
+	if r, err := denylist.Open(context.Background(), redisAddr, ""); err == nil {
+		r.C.Del(context.Background(), "vg:deny:dev:1:1", "vg:deny:dev:1:2")
+		r.Close()
+	}
+	p := start(t, authEnv(dsn, extra...)...)
+	startWorker(t, bin, dsn, extra)
+	base := "http://" + p.pub
+	wsURL := fmt.Sprintf("ws://127.0.0.1:%d", im.Ports["ws"])
+	login := func(phone, device string) string {
+		_, _ = d.Exec("UPDATE login_event SET created_at = created_at - INTERVAL 5 MINUTE")
+		before := len(regexp.MustCompile(`验证码 (\d{6})`).FindAllStringSubmatch(p.stderr.String(), -1))
+		jpost(t, base+"/v1/auth/sms/code", `{"phone":"`+phone+`","device_id":"`+device+`"}`)
+		var code string
+		eventually(t, "sms code", 3*time.Second, func() bool {
+			all := regexp.MustCompile(`验证码 (\d{6})`).FindAllStringSubmatch(p.stderr.String(), -1)
+			if len(all) > before {
+				code = all[len(all)-1][1]
+				return true
+			}
+			return false
+		})
+		_, body := jpost(t, base+"/v1/auth/login", `{"phone":"`+phone+`","code":"`+code+`","device":{"id":"`+device+`","class":"app"}}`)
+		a, _ := body["access_token"].(string)
+		return a
+	}
+	accA, accB := login("+8613800138301", "device-aaaaaaaaaaaaaaaa"), login("+8613800138302", "device-bbbbbbbbbbbbbbbb")
+	cr := func(acc string) (string, string) {
+		_, b := get(t, base+"/v1/im/token", "Bearer "+acc)
+		var o struct{ UID, Token string }
+		_ = json.Unmarshal([]byte(strings.ReplaceAll(strings.ReplaceAll(b, `"uid"`, `"UID"`), `"token"`, `"Token"`)), &o)
+		return o.UID, o.Token
+	}
+	uidA, tokA := cr(accA)
+	uidB, _ := cr(accB)
+	wsA := dialWS(t, wsURL)
+	if !wsA.connect(uidA, tokA, "im-a", 0) {
+		t.Fatal("connect")
+	}
+	for i := 1; i <= 5; i++ {
+		if a := wsA.send(uidB, ulid(), map[string]any{"type": 1, "content": "x"}); a.Reason != 1 {
+			t.Fatalf("send %d within the limit: %+v", i, a)
+		}
+	}
+	if a := wsA.send(uidB, ulid(), map[string]any{"type": 1, "content": "one too many"}); a.Reason != 133 {
+		t.Fatalf("the 6th send in the window must be refused with 133: %+v", a)
+	}
+	body := fmt.Sprintf(`{"to_uid":%q,"client_msg_no":%q,"payload":{"type":1,"content":"api"}}`, uidB, ulid())
+	req, _ := http.NewRequest("POST", base+"/v1/messages", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+accA)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("the API must answer 429 with Retry-After: %v %v", err, resp)
+	}
+	resp.Body.Close()
+	// another sender has its own budget; system notices are exempt
+	if c, _ := jpost(t, base+"/v1/messages", fmt.Sprintf(`{"to_uid":%q,"client_msg_no":%q,"payload":{"type":1,"content":"hi"}}`, uidA, ulid()), "Authorization", "Bearer "+accB); c != 200 {
+		t.Fatalf("B must not be affected by A's limit: %d", c)
+	}
+	_, m := get(t, "http://"+p.internal+"/metrics", "Bearer metrics-token-0123456789abcdef")
+	if !strings.Contains(m, `vg_message_gate_total{rule="ratelimit",result="deny"}`) {
+		t.Errorf("rate-limit denials must be visible in metrics")
+	}
+}
+
+func domainPersonChannel(a, b string) string { return msgdomain.PersonChannel(a, b) }
+
+// Load evidence for NFR-9: many concurrent senders through the real IM hook and the real gate. Throughput and latency are recorded; what is asserted is
+// that nothing is refused, nothing times out and the gate stays inside its budget on this machine. The 50 ms P95 target remains an [ASSUMPTION] to be
+// confirmed on production-like hardware.
+func TestGateUnderConcurrentLoad(t *testing.T) {
+	redisAddr := os.Getenv("VG_TEST_REDIS_ADDR")
+	if redisAddr == "" {
+		t.Skip("VG_TEST_REDIS_ADDR not set")
+	}
+	hookAddr := freeAddr(t)
+	im := testim.Start(t, "http://"+hookAddr+"/im/webhook/"+msgHookSecret)
+	d, dsn, bin := migrated(t)
+	extra := []string{"VG_REDIS_ADDR=" + redisAddr, "VG_IM_API_URL=" + im.APIURL, "VG_METRICS_TOKEN=metrics-token-0123456789abcdef",
+		"VG_IM_WEBHOOK_SECRET=" + msgHookSecret, "VG_IM_WEBHOOK_ADDR=" + hookAddr, "VG_MESSAGE_RATE_LIMIT=100000"}
+	if r, err := denylist.Open(context.Background(), redisAddr, ""); err == nil {
+		r.C.Del(context.Background(), "vg:deny:dev:1:1", "vg:deny:dev:1:2")
+		r.Close()
+	}
+	p := start(t, authEnv(dsn, extra...)...)
+	startWorker(t, bin, dsn, extra)
+	base := "http://" + p.pub
+	login := func(phone, device string) string {
+		_, _ = d.Exec("UPDATE login_event SET created_at = created_at - INTERVAL 5 MINUTE")
+		before := len(regexp.MustCompile(`验证码 (\d{6})`).FindAllStringSubmatch(p.stderr.String(), -1))
+		jpost(t, base+"/v1/auth/sms/code", `{"phone":"`+phone+`","device_id":"`+device+`"}`)
+		var code string
+		eventually(t, "sms code", 3*time.Second, func() bool {
+			all := regexp.MustCompile(`验证码 (\d{6})`).FindAllStringSubmatch(p.stderr.String(), -1)
+			if len(all) > before {
+				code = all[len(all)-1][1]
+				return true
+			}
+			return false
+		})
+		_, body := jpost(t, base+"/v1/auth/login", `{"phone":"`+phone+`","code":"`+code+`","device":{"id":"`+device+`","class":"app"}}`)
+		a, _ := body["access_token"].(string)
+		return a
+	}
+	accA, accB := login("+8613800138401", "device-aaaaaaaaaaaaaaaa"), login("+8613800138402", "device-bbbbbbbbbbbbbbbb")
+	_, bm := jget(t, base+"/v1/im/token", accB)
+	uidB, _ := bm["uid"].(string)
+
+	const workers, per = 16, 50
+	lat := make(chan time.Duration, workers*per)
+	var wg sync.WaitGroup
+	start0 := time.Now()
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < per; i++ {
+				b := fmt.Sprintf(`{"to_uid":%q,"client_msg_no":%q,"payload":{"type":1,"content":"load"}}`, uidB, ulid())
+				t0 := time.Now()
+				c, r := jpost(t, base+"/v1/messages", b, "Authorization", "Bearer "+accA)
+				if c != 200 {
+					t.Errorf("load send refused: %d %v", c, r)
+					return
+				}
+				lat <- time.Since(t0)
+			}
+		}()
+	}
+	wg.Wait()
+	elapsed := time.Since(start0)
+	close(lat)
+	var all []time.Duration
+	for l := range lat {
+		all = append(all, l)
+	}
+	if len(all) != workers*per {
+		t.Fatalf("every send must succeed: %d of %d", len(all), workers*per)
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i] < all[j] })
+	_, m := get(t, "http://"+p.internal+"/metrics", "Bearer metrics-token-0123456789abcdef")
+	// gate-only latency from the histogram: the smallest bucket that holds 95% of evaluations
+	var total float64
+	buckets := map[string]float64{}
+	for _, line := range strings.Split(m, "\n") {
+		if strings.HasPrefix(line, "vg_message_gate_duration_seconds_count") {
+			fmt.Sscanf(line[strings.LastIndex(line, " ")+1:], "%g", &total)
+		}
+		if strings.HasPrefix(line, "vg_message_gate_duration_seconds_bucket{le=\"") {
+			le := line[len("vg_message_gate_duration_seconds_bucket{le=\""):]
+			le = le[:strings.Index(le, "\"")]
+			var v float64
+			fmt.Sscanf(line[strings.LastIndex(line, " ")+1:], "%g", &v)
+			buckets[le] = v
+		}
+	}
+	p95 := "n/a"
+	for _, le := range []string{"0.001", "0.0025", "0.005", "0.01", "0.025", "0.05", "0.1", "0.25", "0.5"} {
+		if total > 0 && buckets[le] >= 0.95*total {
+			p95 = le
+			break
+		}
+	}
+	t.Logf("load: %d sends by %d concurrent workers in %v = %.0f sends/s; end-to-end p50=%v p95=%v p99=%v max=%v; gate evaluations=%.0f, gate p95 <= %ss",
+		len(all), workers, elapsed.Round(time.Millisecond), float64(len(all))/elapsed.Seconds(), all[len(all)/2], all[len(all)*95/100], all[len(all)*99/100], all[len(all)-1], total, p95)
+	if strings.Contains(m, `result="timeout"`) || strings.Contains(m, `result="error"`) {
+		t.Errorf("no gate evaluation may time out or fail under this load")
+	}
+	if p95 == "n/a" {
+		t.Errorf("gate latency histogram missing")
 	}
 }

@@ -166,3 +166,50 @@ func TestUnknownFieldsAndUnknownEventsAreTolerated(t *testing.T) {
 		t.Errorf("unhandled notifications are acknowledged, got %d", rec.Code)
 	}
 }
+
+func TestNotifyDecodesBatchAndRetriesOnHandlerError(t *testing.T) {
+	var got []imwebhook.Notified
+	var fail bool
+	h := imwebhook.Handler(imwebhook.Config{Secret: secret, Handlers: imwebhook.Handlers{Notify: func(_ context.Context, b []imwebhook.Notified) error {
+		got = append(got, b...)
+		if fail {
+			return errors.New("db down")
+		}
+		return nil
+	}}})
+	body := `[{"message_id":2124048718486310912,"message_seq":1,"client_msg_no":"c1","from_uid":"alice","channel_id":"bob@alice","channel_type":1,"timestamp":1795247652,"payload":"eyJ0eXBlIjoxfQ=="}]`
+	do := func(b string) int {
+		r := httptest.NewRequest("POST", "/im/webhook/"+secret+"?event=msg.notify", strings.NewReader(b))
+		r.Header.Set("Content-Type", "application/json")
+		r.RemoteAddr = "127.0.0.1:1234"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	if c := do(body); c != 200 || len(got) != 1 || got[0].MessageID != 2124048718486310912 || string(got[0].Payload) != `{"type":1}` {
+		t.Fatalf("decode: %d %+v", c, got)
+	}
+	fail = true
+	if c := do(body); c != 500 {
+		t.Fatalf("a failing consumer must answer 500 so the IM retries: %d", c)
+	}
+	if c := do(`not json`); c != 400 {
+		t.Fatalf("malformed: %d", c)
+	}
+	// a batch bigger than the before_send cap but within the notify cap is accepted
+	big := `[{"message_id":1,"message_seq":1,"client_msg_no":"c","from_uid":"a","channel_id":"a@b","channel_type":1,"payload":"` + strings.Repeat("QUJD", 100<<10) + `"}]`
+	fail = false
+	if c := do(big); c != 200 {
+		t.Fatalf("large notify batch: %d", c)
+	}
+	// without a consumer the event is acknowledged and ignored
+	h2 := imwebhook.Handler(imwebhook.Config{Secret: secret})
+	r := httptest.NewRequest("POST", "/im/webhook/"+secret+"?event=msg.notify", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r.RemoteAddr = "127.0.0.1:1234"
+	w := httptest.NewRecorder()
+	h2.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("no consumer: %d", w.Code)
+	}
+}

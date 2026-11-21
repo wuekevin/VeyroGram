@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"veyrogram/api/internal/platform/clientip"
 	"veyrogram/api/internal/platform/token"
@@ -55,6 +56,8 @@ type Config struct {
 	PhoneHashKey       string // HMAC key for the phone blind index and one-time-code hashes
 	RedisAddr          string // host:port of the Redis 7.x holding the token deny-list; loopback/private only
 	RedisPassword      string
+	MessageRateLimit   int      // messages one account may send per window before the gate answers 133 (0 disables); VG_MESSAGE_RATE_LIMIT, default 30
+	MessageRateWindow  int      // window in seconds; VG_MESSAGE_RATE_WINDOW_SECONDS, default 10
 	IMTokenKey         string   // HMAC key deriving WuKongIM connection tokens
 	TrustedProxies     []string // CIDRs/IPs whose X-Forwarded-For is honoured; empty trusts nobody (AD-16)
 }
@@ -122,6 +125,21 @@ func Load(getenv func(string) string) (Config, []Violation) {
 		c.Debug = true
 	default:
 		vs = append(vs, Violation{"VG_DEBUG", "must be true or false"})
+	}
+	c.MessageRateLimit, c.MessageRateWindow = 30, 10
+	for _, e := range []struct {
+		name string
+		dst  *int
+		min  int
+	}{{"VG_MESSAGE_RATE_LIMIT", &c.MessageRateLimit, 0}, {"VG_MESSAGE_RATE_WINDOW_SECONDS", &c.MessageRateWindow, 1}} {
+		if v := strings.TrimSpace(getenv(e.name)); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < e.min || n > 100000 {
+				vs = append(vs, Violation{e.name, fmt.Sprintf("must be an integer between %d and 100000", e.min)})
+			} else {
+				*e.dst = n
+			}
+		}
 	}
 	switch strings.ToLower(strings.TrimSpace(getenv("VG_AUTH_SMS_LOGIN"))) {
 	case "", "0", "false":

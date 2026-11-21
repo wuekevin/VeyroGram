@@ -24,6 +24,7 @@ type Gate struct {
 	Rules   []Rule
 	Budget  time.Duration             // whole-evaluation budget; the IM waits synchronously, so keep it well under its own timeout
 	Observe func(rule, result string) // result: allow | deny | error | timeout | skipped
+	Timing  func(time.Duration)       // whole-evaluation duration (metrics); optional
 }
 
 // DefaultBudget is a starting point, to be tuned against NFR-9 (P95 <= 50 ms for the whole hook is an [ASSUMPTION] still to be load-tested).
@@ -37,6 +38,10 @@ func (g *Gate) observe(rule, result string) {
 
 // Evaluate never returns an error: every failure mode is a verdict.
 func (g *Gate) Evaluate(ctx context.Context, s domain.Send) domain.Verdict {
+	if g.Timing != nil {
+		start := time.Now()
+		defer func() { g.Timing(time.Since(start)) }()
+	}
 	if s.From == domain.SystemUID { // server-originated account notices; no client can authenticate as this uid
 		g.observe("system", "allow")
 		return domain.Allow
@@ -81,6 +86,24 @@ func (g *Gate) Evaluate(ctx context.Context, s domain.Send) domain.Verdict {
 		}
 	}
 	return domain.Allow
+}
+
+// RateRule limits how fast one account may send. It is an unrestricted rule: when the counter store is down the rule is skipped and counted, so a Redis
+// outage never stops messaging (the restricted rules still apply). limit <= 0 disables it.
+func RateRule(rl ports.RateLimiter, limit int, window time.Duration) Rule {
+	return Rule{Name: "ratelimit", Restricted: false, Check: func(ctx context.Context, s domain.Send) (domain.Verdict, error) {
+		if limit <= 0 || rl == nil {
+			return domain.Allow, nil
+		}
+		ok, _, err := rl.Allow(ctx, "msg:"+s.From, limit, window)
+		if err != nil {
+			return domain.Verdict{}, err
+		}
+		if !ok {
+			return domain.Verdict{Reason: domain.ReasonRateLimited}, nil
+		}
+		return domain.Allow, nil
+	}}
 }
 
 // StandardRules is the v1 person-chat policy. Block lists, mute and rate limits join here when their stories land (they read the Redis projection

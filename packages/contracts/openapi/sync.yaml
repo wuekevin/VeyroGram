@@ -90,7 +90,10 @@ paths:
     put:
       operationId: putDraft
       summary: Store (or, with empty content, clear) the draft for a conversation
-      description: Last writer wins. The other devices are nudged through the IM with a `sync_notice` message that carries pointers only, never the draft text.
+      description: |
+        Without `base_version` the last writer wins. With `base_version` (the version of the draft the user was editing) a draft that has changed on another device
+        since is NOT overwritten: the answer is 409 `draft_conflict` carrying the current draft, so the client can merge and resend with `base_version` set to the
+        current version. The other devices are nudged through the IM with a `sync_notice` message that carries pointers only, never the draft text.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -103,8 +106,27 @@ paths:
               properties:
                 peer: { type: string }
                 content: { type: string, maxLength: 4000 }
+                base_version: { type: integer, minimum: 0 }
       responses:
         '200': { $ref: '#/components/responses/Version' }
+        '409':
+          description: The draft changed on another device after `base_version`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, message, trace_id, current]
+                properties:
+                  code: { type: string, const: draft_conflict }
+                  message: { type: string }
+                  trace_id: { type: string }
+                  current:
+                    type: object
+                    required: [content, deleted, version]
+                    properties:
+                      content: { type: string }
+                      deleted: { type: boolean }
+                      version: { type: integer }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
   /v1/sync/conversation-settings:

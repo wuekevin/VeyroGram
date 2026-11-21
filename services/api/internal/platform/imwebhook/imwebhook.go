@@ -23,7 +23,23 @@ import (
 	"time"
 )
 
-const MaxBody = 64 << 10
+const (
+	MaxBody = 64 << 10 // before_send and unknown events
+	// MaxNotifyBody bounds a msg.notify batch (the IM batches up to 100 messages of up to 16 KiB each; a rejected batch would be retried and eventually lost).
+	MaxNotifyBody = 4 << 20
+)
+
+// Notified is one committed message from a msg.notify batch. ChannelID is the IM's composite person-channel id ("a@b"). Payload is decoded from base64.
+type Notified struct {
+	MessageID   int64  `json:"message_id"`
+	MessageSeq  uint64 `json:"message_seq"`
+	ClientMsgNo string `json:"client_msg_no"`
+	FromUID     string `json:"from_uid"`
+	ChannelID   string `json:"channel_id"`
+	ChannelType uint8  `json:"channel_type"`
+	Timestamp   int64  `json:"timestamp"`
+	Payload     []byte `json:"payload"`
+}
 
 // BeforeSend is the synchronous send gate (AD-21). Allow=false rejects with ReasonCode (business codes 128–255).
 type BeforeSend struct {
@@ -49,6 +65,8 @@ const DenyUnavailable uint8 = 200
 // Handlers are supplied by later stories (message, risk). A nil BeforeSend denies every send: fail-closed.
 type Handlers struct {
 	BeforeSend func(context.Context, BeforeSend) (Decision, error)
+	// Notify consumes committed messages (msg.notify). An error answers 500 so the IM retries the batch; nil means events are acknowledged and ignored.
+	Notify func(context.Context, []Notified) error
 }
 
 // Config configures the handler.
@@ -152,8 +170,12 @@ func Handler(c Config) http.Handler {
 			reject(w, http.StatusUnsupportedMediaType, "content_type")
 			return
 		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, MaxBody+1))
-		if err != nil || len(body) > MaxBody {
+		bodyMax := MaxBody
+		if r.URL.Query().Get("event") == "msg.notify" {
+			bodyMax = MaxNotifyBody
+		}
+		body, err := io.ReadAll(io.LimitReader(r.Body, int64(bodyMax)+1))
+		if err != nil || len(body) > bodyMax {
 			reject(w, http.StatusRequestEntityTooLarge, "body")
 			return
 		}
@@ -185,6 +207,21 @@ func Handler(c Config) http.Handler {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(d)
+		case "msg.notify":
+			if c.Handlers.Notify == nil {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			var batch []Notified
+			if err := json.Unmarshal(body, &batch); err != nil {
+				reject(w, http.StatusBadRequest, "malformed")
+				return
+			}
+			if err := c.Handlers.Notify(r.Context(), batch); err != nil {
+				http.Error(w, "retry", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
 		default:
 			// other notifications (msg.notify, user.onlinestatus, ...) are acknowledged and ignored until a story consumes them
 			w.WriteHeader(http.StatusOK)

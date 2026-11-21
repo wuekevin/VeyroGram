@@ -67,7 +67,7 @@ func TestSyncCatchUpUnreadDraftsAndIsolationOverRealIM(t *testing.T) {
 	im := testim.Start(t, "http://"+hookAddr+"/im/webhook/"+msgHookSecret)
 	d, dsn, bin := migrated(t)
 	extra := []string{"VG_REDIS_ADDR=" + redisAddr, "VG_IM_API_URL=" + im.APIURL, "VG_METRICS_TOKEN=metrics-token-0123456789abcdef",
-		"VG_IM_WEBHOOK_SECRET=" + msgHookSecret, "VG_IM_WEBHOOK_ADDR=" + hookAddr}
+		"VG_IM_WEBHOOK_SECRET=" + msgHookSecret, "VG_IM_WEBHOOK_ADDR=" + hookAddr, "VG_MESSAGE_RATE_LIMIT=100000"}
 	if r, err := denylist.Open(context.Background(), redisAddr, ""); err == nil {
 		r.C.Del(context.Background(), "vg:deny:dev:1:1", "vg:deny:dev:1:2", "vg:deny:dev:1:3", "vg:deny:dev:1:4")
 		r.Close()
@@ -195,7 +195,15 @@ func TestSyncCatchUpUnreadDraftsAndIsolationOverRealIM(t *testing.T) {
 	if !wsB.connect(uidB, tokB, "im-b", 0) {
 		t.Fatal("B must connect")
 	}
-	_ = wsB.conn.Close() // network drop
+	_ = wsB.conn.Close()                                 // network drop
+	if w := os.Getenv("VG_TEST_OFFLINE_WAIT"); w != "" { // set to 10m to run the story's real "offline for 10 minutes" scenario (kept out of CI for its duration)
+		d, err := time.ParseDuration(w)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("device B stays offline for %v", d)
+		time.Sleep(d)
+	}
 	for i := 8; i <= 12; i++ {
 		send(accA, uidB, fmt.Sprintf("m%d", i))
 	}
@@ -257,6 +265,30 @@ func TestSyncCatchUpUnreadDraftsAndIsolationOverRealIM(t *testing.T) {
 	}
 	if len(seen) != 20 {
 		t.Fatalf("versions must be unique under concurrency: %d distinct", len(seen))
+	}
+
+	// 6b. Conflict detection: a device that edits from a stale version does not clobber the newer draft; it gets the current one back to merge.
+	_, cur := jsend(t, "PUT", base+"/v1/sync/drafts", accB1, fmt.Sprintf(`{"peer":%q,"content":"newest from B1"}`, uidA))
+	curV := cur["version"].(float64)
+	c, cf := jsend(t, "PUT", base+"/v1/sync/drafts", accB2, fmt.Sprintf(`{"peer":%q,"content":"stale edit","base_version":%d}`, uidA, uint64(curV)-1))
+	if c != 409 || cf["code"] != "draft_conflict" || cf["current"].(map[string]any)["content"] != "newest from B1" || cf["current"].(map[string]any)["version"] != curV {
+		t.Fatalf("a stale edit must be refused with the current draft: %d %v", c, cf)
+	}
+	if c, ok := jsend(t, "PUT", base+"/v1/sync/drafts", accB2, fmt.Sprintf(`{"peer":%q,"content":"merged","base_version":%d}`, uidA, uint64(curV))); c != 200 || ok["version"].(float64) <= curV {
+		t.Fatalf("an edit based on the current version is accepted: %d %v", c, ok)
+	}
+	// tombstone retention: a cleared draft older than the window is purged by the CLI; a fresh one and live drafts stay
+	jsend(t, "PUT", base+"/v1/sync/drafts", accB1, fmt.Sprintf(`{"peer":%q,"content":""}`, uidA))
+	if _, err := d.Exec("UPDATE draft SET updated_at = updated_at - INTERVAL 40 DAY WHERE deleted=1"); err != nil {
+		t.Fatal(err)
+	}
+	jsend(t, "PUT", base+"/v1/sync/drafts", accB1, fmt.Sprintf(`{"peer":%q,"content":"live again"}`, uidC))
+	jsend(t, "PUT", base+"/v1/sync/drafts", accB1, fmt.Sprintf(`{"peer":%q,"content":""}`, uidC)) // fresh tombstone
+	out, serr, code := runBin(t, bin, baseEnv(append(authEnv(dsn, extra...), "VG_ENV=development")...), "sync", "purge-tombstones", "-days", "30")
+	var left int
+	_ = d.QueryRow("SELECT COUNT(*) FROM draft WHERE deleted=1").Scan(&left)
+	if code != 0 || !strings.Contains(out, "purged 1 draft tombstones") || left != 1 {
+		t.Fatalf("purge: code=%d out=%q err=%q tombstones left=%d (want the fresh one only)", code, out, serr, left)
 	}
 
 	// 7. Isolation: C sees nothing of A<->B, cannot name a foreign conversation, and has no state of B's.

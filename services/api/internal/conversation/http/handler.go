@@ -176,16 +176,26 @@ func (h *Handler) read(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// PUT /v1/sync/drafts {peer, content}: empty content clears the draft. Last writer wins.
+// PUT /v1/sync/drafts {peer, content, base_version?}: empty content clears the draft. Without base_version the last writer wins; with it a stale write is 409.
 func (h *Handler) putDraft(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Peer    string `json:"peer"`
-		Content string `json:"content"`
+		Peer        string  `json:"peer"`
+		Content     string  `json:"content"`
+		BaseVersion *uint64 `json:"base_version"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	v, err := h.Svc.PutDraft(r.Context(), h.uid(r), in.Peer, in.Content)
+	v, err := h.Svc.PutDraft(r.Context(), h.uid(r), in.Peer, in.Content, in.BaseVersion)
+	var ce *ports.ConflictError
+	if errors.As(err, &ce) {
+		// 409 with the current draft so the client can merge and resend with base_version = current.version
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": "draft_conflict", "message": "the draft changed on another device",
+			"trace_id": r.Header.Get("X-Request-Id"), "current": map[string]any{"content": ce.Current.Content, "deleted": ce.Current.Deleted, "version": ce.Current.Version}})
+		return
+	}
 	if err != nil {
 		h.fail(w, r, err)
 		return

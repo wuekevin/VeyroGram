@@ -28,6 +28,7 @@ a signing key shorter than 32 bytes or a known default, wildcard CORS, debug mod
 | `VG_TOKEN_KEYS` | — | `kid:base64url(32-byte seed)[,kid2:...]`; the first key signs 15-minute access tokens (EdDSA), the others only verify (rotation). Generate: `openssl rand 32 \| base64 \| tr '+/' '-_' \| tr -d =` |
 | `VG_PHONE_HASH_KEY` | — | >= 32 bytes; HMAC key for the phone blind index and code hashes. **Changing it orphans every account**: treat it like a database key, back it up, never rotate casually |
 | `VG_REDIS_ADDR` / `VG_REDIS_PASSWORD` | — | Redis 7.x (loopback/private) for the access-token deny-list; required in staging/production when auth is on; without it revocation takes effect only at token expiry (<= 15 min) |
+| `VG_MESSAGE_RATE_LIMIT` / `VG_MESSAGE_RATE_WINDOW_SECONDS` | `30` / `10` | Per-sender send limit enforced by the send-policy gate (before_send hook and `/v1/messages`), counted in Redis; `0` disables. A Redis outage skips the rule (fail-open) and is counted in `vg_message_gate_total{rule="ratelimit",result="skipped"}` |
 | `VG_IM_TOKEN_KEY` | — | >= 32 bytes, different from `VG_PHONE_HASH_KEY`; derives WuKongIM connection tokens (rotated by revocations, never stored) |
 | `VG_TRUSTED_PROXIES` | — | CIDRs/IPs whose `X-Forwarded-For` is honoured (the Nginx host); empty = trust nobody (AD-16) |
 

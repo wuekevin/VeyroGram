@@ -32,6 +32,7 @@ import (
 //	audit verify                recompute the audit hash chain
 //	audit check-anchors [-days N] [-require-all]   compare the log with the last N days of off-host anchors
 //	audit anchor                verify, then write today's chain head to the off-host anchor store
+//	sync purge-tombstones [-days N]   delete cleared-draft tombstones older than N days (default 30)
 //	outbox replay <id>          put a dead-lettered event back in the queue (and record it in the audit log)
 //	db provision [-database D -app-user U -migrator-user M -host H]   create/re-key the app and migrator accounts (admin; passwords from env)
 //	db grant-app -database D -user U -host H   (as admin, via VG_MYSQL_ADMIN_DSN) per-table grants for the application account
@@ -150,6 +151,22 @@ func runOps(args []string, getenv func(string) string, stderr *os.File) int {
 				return 1
 			}
 			fmt.Printf("anchored rows=%d head_id=%d head_hash=%s\n", a.Rows, a.HeadID, a.HeadHash)
+			return 0
+		}
+	case "sync":
+		if len(args) >= 2 && args[1] == "purge-tombstones" {
+			fs := flag.NewFlagSet("purge-tombstones", flag.ContinueOnError)
+			fs.SetOutput(stderr)
+			days := fs.Int("days", 30, "delete cleared-draft tombstones older than this many days (the retention window for offline devices)")
+			if err := fs.Parse(args[2:]); err != nil || *days < 1 {
+				return 2
+			}
+			n, err := (&convadapters.MySQLStore{DB: pool}).PurgeTombstones(ctx, time.Now().AddDate(0, 0, -*days))
+			if err != nil {
+				fmt.Fprintln(stderr, "error:", err)
+				return 1
+			}
+			fmt.Printf("purged %d draft tombstones older than %d days\n", n, *days)
 			return 0
 		}
 	case "outbox":

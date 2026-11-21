@@ -178,3 +178,27 @@ func TestAuthSMSLoginRequiresSafeSettings(t *testing.T) {
 		t.Fatalf("auth must be off by default: %v", vs)
 	}
 }
+
+func TestMessageRateLimitSettings(t *testing.T) {
+	c, vs := Load(env(good()))
+	if len(vs) != 0 || c.MessageRateLimit != 30 || c.MessageRateWindow != 10 {
+		t.Fatalf("defaults 30 per 10 s: %+v %v", c, vs)
+	}
+	m := good()
+	m["VG_MESSAGE_RATE_LIMIT"], m["VG_MESSAGE_RATE_WINDOW_SECONDS"] = "0", "60"
+	if c, vs = Load(env(m)); len(vs) != 0 || c.MessageRateLimit != 0 || c.MessageRateWindow != 60 {
+		t.Fatalf("0 disables, window is configurable: %+v %v", c, vs)
+	}
+	for k, v := range map[string]string{"VG_MESSAGE_RATE_LIMIT": "-1", "VG_MESSAGE_RATE_WINDOW_SECONDS": "0"} {
+		m = good()
+		m[k] = v
+		if _, vs = Load(env(m)); !strings.Contains(keys(vs), k) {
+			t.Errorf("%s=%s must be rejected: %s", k, v, keys(vs))
+		}
+	}
+	m = good()
+	m["VG_MESSAGE_RATE_LIMIT"] = "lots"
+	if _, vs = Load(env(m)); !strings.Contains(keys(vs), "VG_MESSAGE_RATE_LIMIT") {
+		t.Errorf("non-numeric must be rejected")
+	}
+}

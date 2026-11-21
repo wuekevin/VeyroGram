@@ -106,6 +106,20 @@ func Start(t testing.TB, beforeSendURL string) *IM {
 // StartSigned is Start plus webhook.signing_secret, which exists only in the VeyroGram-patched build (tools/build_wukongim.sh).
 func StartSigned(t testing.TB, beforeSendURL, signingSecret string) *IM {
 	t.Helper()
+	return StartOpts(t, Options{BeforeSendURL: beforeSendURL, SigningSecret: signingSecret})
+}
+
+// Options configures a test IM. NotifyURL, when set, receives the asynchronous webhook (msg.notify only).
+type Options struct {
+	BeforeSendURL string
+	SigningSecret string
+	NotifyURL     string
+}
+
+// StartOpts is the general launcher.
+func StartOpts(t testing.TB, o Options) *IM {
+	t.Helper()
+	beforeSendURL, signingSecret := o.BeforeSendURL, o.SigningSecret
 	bin := os.Getenv("VG_TEST_WUKONGIM_BIN")
 	if bin == "" {
 		t.Skip("VG_TEST_WUKONGIM_BIN not set: skipping WuKongIM contract test (build it with tools/build_wukongim.sh)")
@@ -127,6 +141,11 @@ func StartSigned(t testing.TB, beforeSendURL, signingSecret string) *IM {
 	conf = setKey(t, conf, "cluster", "join_token", `"test-only-join-token-0123456789abcdef"`)
 	conf = setKey(t, conf, "gateway", "listeners", fmt.Sprintf(`[{ name = "tcp-wkproto", network = "tcp", address = "127.0.0.1:%d", transport = "gnet", protocol = "wkproto" }, { name = "ws-gateway", network = "websocket", address = "127.0.0.1:%d", transport = "gnet", protocol = "wsmux" }]`, tcp, ws))
 	conf = setKey(t, conf, "plugin", "enable", "false")
+	if o.NotifyURL != "" {
+		conf = setKey(t, conf, "webhook", "http_addr", fmt.Sprintf("%q", o.NotifyURL))
+		conf = setKey(t, conf, "webhook", "focus_events", `["msg.notify"]`)
+		conf = setKey(t, conf, "webhook", "msg_notify_batch_max_wait", `"50ms"`)
+	}
 	if signingSecret != "" {
 		conf = addKey(t, conf, "webhook", "signing_secret", fmt.Sprintf("%q", signingSecret))
 	}

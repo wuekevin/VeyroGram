@@ -39,3 +39,8 @@ type Ref struct {
 type Refs interface {
 	Record(ctx context.Context, r Ref) error
 }
+
+// RateLimiter counts sends per subject in fixed windows. An error means "could not count": the gate then skips the rule (fail-open) and counts that.
+type RateLimiter interface {
+	Allow(ctx context.Context, subject string, limit int, window time.Duration) (ok bool, retryAfter time.Duration, err error)
+}

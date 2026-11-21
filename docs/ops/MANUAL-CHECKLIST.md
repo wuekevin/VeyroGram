@@ -111,6 +111,8 @@ infrastructure/scripts/deploy.sh services/api/bin/veyrogram-api-linux-amd64 v0.0
 cp infrastructure/systemd/veyrogram-*.service infrastructure/systemd/veyrogram-*.timer /etc/systemd/system/ && systemctl daemon-reload
 systemctl enable --now veyrogram-api veyrogram-worker
 systemd-analyze security veyrogram-api.service veyrogram-worker.service veyrogram-audit-anchor.service
+# 每日清理“已清空草稿”的墓碑（Story 1.16，保留 30 天；离线超过 30 天的设备下次全量同步以服务器为准，不会复活）
+cp infrastructure/systemd/veyrogram-sync-purge.service infrastructure/systemd/veyrogram-sync-purge.timer /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now veyrogram-sync-purge.timer
 ```
 - **验证：** `systemd-analyze security` 的总分建议 ≤ 3.0（越低越好）；`curl -s http://127.0.0.1:9101/readyz` 返回 200。
 - **回滚演练：** 先部署 v0.0.2 的一个故意失败版本（例如把 `VG_MYSQL_DSN` 改错），确认脚本自动回到 v0.0.1；再执行 `infrastructure/scripts/rollback.sh` 手动回滚一次。

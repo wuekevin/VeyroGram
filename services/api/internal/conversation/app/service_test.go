@@ -122,7 +122,7 @@ func TestIMFailureIsClassified(t *testing.T) {
 func TestDraftValidation(t *testing.T) {
 	s := &Service{}
 	for _, c := range []struct{ peer, content string }{{"a@b", "x"}, {"vg_system", "x"}, {"bob", string(make([]rune, 4001))}, {"bob", "\xff\xfe"}} {
-		if _, err := s.PutDraft(context.Background(), "u1", c.peer, c.content); !errors.Is(err, domain.ErrInvalidInput) {
+		if _, err := s.PutDraft(context.Background(), "u1", c.peer, c.content, nil); !errors.Is(err, domain.ErrInvalidInput) {
 			t.Errorf("%+v must be refused", c)
 		}
 	}

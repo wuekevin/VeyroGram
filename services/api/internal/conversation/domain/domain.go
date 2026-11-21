@@ -25,8 +25,10 @@ const (
 )
 
 var (
-	ErrInvalidInput  = errors.New("conversation: invalid input")
-	ErrNotFound      = errors.New("conversation: not found")
+	ErrInvalidInput = errors.New("conversation: invalid input")
+	ErrNotFound     = errors.New("conversation: not found")
+	// ErrConflict means the draft changed on another device after the version the caller edited; the caller should merge and retry.
+	ErrConflict      = errors.New("conversation: draft changed elsewhere")
 	ErrIMUnavailable = errors.New("conversation: im unavailable")
 )
 

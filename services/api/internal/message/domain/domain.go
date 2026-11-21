@@ -15,6 +15,7 @@ const (
 	ReasonRecipientUnavailable uint8 = 130
 	ReasonInvalidPayload       uint8 = 131
 	ReasonPayloadTooLarge      uint8 = 132
+	ReasonRateLimited          uint8 = 133
 	ReasonUnavailable          uint8 = 200 // the policy could not be evaluated in time: fail closed
 )
 
@@ -142,4 +143,23 @@ func CheckPayload(b []byte) uint8 {
 		}
 	}
 	return 0
+}
+
+// PersonChannel is the canonical storage id of the conversation between two accounts: the two uids, ordered, joined by "@". The IM's own composite id
+// is not ordered the same way, so every writer of message_ref normalises through this function and the unique key sees one conversation.
+func PersonChannel(a, b string) string {
+	if a > b {
+		a, b = b, a
+	}
+	return a + "@" + b
+}
+
+// NotifiedPerson extracts the canonical conversation id from a composite IM person-channel id; ok is false for anything that is not a two-party
+// conversation including the sender.
+func NotifiedPerson(from, channelID string) (string, bool) {
+	peer, ok := Peer(from, channelID)
+	if !ok {
+		return "", false
+	}
+	return PersonChannel(from, peer), true
 }

@@ -60,8 +60,15 @@ type StateItem struct {
 
 type Store interface {
 	// PutDraft stores the draft (empty content = tombstone) under a fresh per-user version and queues the change notice, in one transaction.
-	PutDraft(ctx context.Context, tenant uint64, uid, peer string, channelType uint8, content string, now time.Time) (version uint64, err error)
+	// baseVersion is optional (nil = last writer wins). When given and the stored draft is newer than it, nothing is written and *ConflictError carries the
+	// current draft so the client can merge.
+	PutDraft(ctx context.Context, tenant uint64, uid, peer string, channelType uint8, content string, baseVersion *uint64, now time.Time) (version uint64, err error)
 	PutSetting(ctx context.Context, tenant uint64, uid, peer string, channelType uint8, pinned, muted bool, now time.Time) (version uint64, err error)
 	// State lists drafts and settings changed after `since`, ordered by version, at most limit items.
 	State(ctx context.Context, tenant uint64, uid string, since uint64, limit int) ([]StateItem, error)
 }
+
+// ConflictError is returned by PutDraft when baseVersion is older than the stored draft.
+type ConflictError struct{ Current Draft }
+
+func (e *ConflictError) Error() string { return "conversation: draft changed elsewhere" }

@@ -16,6 +16,7 @@ info:
     | 130 | recipient missing/disabled (also the system account) | 404 `recipient_unavailable` |
     | 131 | payload is not a JSON object with an integer `type`, or text is empty / over 4000 characters | 400 `invalid_payload` |
     | 132 | payload over 16 KiB | 413 `payload_too_large` |
+    | 133 | this account is sending too fast (per-sender window, default 30 per 10 s; `Retry-After` on the API) | 429 `rate_limited` |
     | 200 | the policy could not be evaluated in time (fail-closed): retry later with the **same** `client_msg_no` | 503 `policy_unavailable` |
     | IM native (e.g. 25 = send-banned) | refused by the IM before our hook | 403 `muted` / `message_rejected` |
 
@@ -46,6 +47,13 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '413': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+        '429':
+          description: Rate limited (reason 133). Retry after the `Retry-After` seconds with the same `client_msg_no`.
+          headers:
+            Retry-After: { schema: { type: integer } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '503': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
@@ -81,7 +89,7 @@ components:
       properties:
         code:
           type: string
-          description: invalid_request, invalid_token, muted, message_rejected, sender_unavailable, recipient_unavailable, invalid_payload, payload_too_large, unsupported_channel, policy_unavailable, im_unavailable, internal
+          description: invalid_request, invalid_token, muted, message_rejected, sender_unavailable, recipient_unavailable, rate_limited, invalid_payload, payload_too_large, unsupported_channel, policy_unavailable, im_unavailable, internal
         message: { type: string }
         trace_id: { type: string }
         details: { type: array, items: { type: string } }

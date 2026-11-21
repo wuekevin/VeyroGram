@@ -42,7 +42,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		switch args[0] {
 		case "migrate":
 			return runMigrate(args[1:], getenv, stderr)
-		case "worker", "audit", "outbox", "db":
+		case "worker", "audit", "outbox", "db", "sync":
 			return runOps(args, getenv, stderr)
 		}
 	}
@@ -88,6 +88,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 	publicMux.HandleFunc("/", httpx.NotFound)
 	var handler http.Handler = publicMux
 	var msgMux, convMux *http.ServeMux
+	var notify func(context.Context, []imwebhook.Notified) error
 	var gate *msgapp.Gate      // nil without MySQL: the before_send hook then denies every send (fail-closed)
 	var authMux *http.ServeMux // /v1/auth/* answers carry credentials, so it is never run through the idempotency response cache
 	if cfg.MySQLDSN != "" {
@@ -114,11 +115,13 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 				return exitConfig
 			}
 			authMux = m
-			gate = messageGate(pool, pm, log)
+			gate = messageGate(cfg, pool, pm, log)
+			notify = notifyHook(pool)
 			msgMux = messageMux(pool, log, im, gate, auth)
 			convMux = conversationMux(pool, log, im, auth)
 		} else {
-			gate = messageGate(pool, pm, log)
+			gate = messageGate(cfg, pool, pm, log)
+			notify = notifyHook(pool)
 		}
 	}
 	if authMux != nil {
@@ -156,6 +159,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		if gate != nil {
 			handlers.BeforeSend = beforeSendHook(gate)
 		}
+		handlers.Notify = notify
 		hook := imwebhook.Handler(imwebhook.Config{Secret: cfg.IMWebhookSecret, SigningSecret: cfg.IMWebhookSigning, Allow: allow, Handlers: handlers, OnReject: func(reason string) {
 			pm.IMWebhookReject.Inc(reason)
 			log.Warn("im webhook rejected", "reason", reason)
