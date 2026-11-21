@@ -149,6 +149,19 @@ func TestAuthSMSLoginRequiresSafeSettings(t *testing.T) {
 			t.Errorf("%s: expected violation on %s, got %v", name, tc.key, vs)
 		}
 	}
+	sb := authOn()
+	sb["VG_SMS_PROVIDER"] = "smsbao"
+	if _, vs := Load(env(sb)); !strings.Contains(keys(vs), "VG_SMSBAO_KEY") {
+		t.Errorf("smsbao without credentials must be rejected: %v", vs)
+	}
+	sb["VG_SMSBAO_USER"], sb["VG_SMSBAO_KEY"] = "tom", "apikey-0123456789"
+	if _, vs := Load(env(sb)); len(vs) != 0 {
+		t.Errorf("smsbao with credentials must be accepted: %v", vs)
+	}
+	sb["VG_SMSBAO_BASE_URL"] = "http://api.smsbao.com"
+	if _, vs := Load(env(sb)); !strings.Contains(keys(vs), "VG_SMSBAO_BASE_URL") {
+		t.Errorf("plain http base must be rejected in production: %v", vs)
+	}
 	dev := authOn()
 	dev["VG_ENV"], dev["VG_SMS_PROVIDER"] = "development", "log"
 	if _, vs := Load(env(dev)); len(vs) != 0 {

@@ -48,6 +48,9 @@ type Config struct {
 	SMSProvider        string   // "http" (generic JSON gateway) or "log" (development/test only; prints codes to the log)
 	SMSHTTPURL         string   // gateway endpoint for the "http" provider; https outside development/test
 	SMSHTTPToken       string   // bearer token for the gateway
+	SMSBaoUser         string   // 短信宝 account (provider "smsbao")
+	SMSBaoKey          string   // 短信宝 ApiKey (or MD5 of the password); a secret
+	SMSBaoBaseURL      string   // default https://api.smsbao.com; override only for tests
 	TokenKeys          string   // kid:base64url(32-byte seed)[,...]; the first key signs access tokens (AD-9)
 	PhoneHashKey       string   // HMAC key for the phone blind index and one-time-code hashes
 	TrustedProxies     []string // CIDRs/IPs whose X-Forwarded-For is honoured; empty trusts nobody (AD-16)
@@ -90,6 +93,9 @@ func Load(getenv func(string) string) (Config, []Violation) {
 		SMSProvider:        strings.ToLower(getenv("VG_SMS_PROVIDER")),
 		SMSHTTPURL:         getenv("VG_SMS_HTTP_URL"),
 		SMSHTTPToken:       getenv("VG_SMS_HTTP_TOKEN"),
+		SMSBaoUser:         getenv("VG_SMSBAO_USER"),
+		SMSBaoKey:          getenv("VG_SMSBAO_KEY"),
+		SMSBaoBaseURL:      getenv("VG_SMSBAO_BASE_URL"),
 		TokenKeys:          getenv("VG_TOKEN_KEYS"),
 		PhoneHashKey:       getenv("VG_PHONE_HASH_KEY"),
 		TrustedProxies:     splitList(getenv("VG_TRUSTED_PROXIES")),
@@ -163,14 +169,21 @@ func (c Config) Validate() []Violation {
 			if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && !c.Strict())) {
 				add("VG_SMS_HTTP_URL", "must be an absolute https URL (http only in development/test)")
 			}
+		case "smsbao":
+			if c.SMSBaoUser == "" || c.SMSBaoKey == "" {
+				add("VG_SMSBAO_KEY", "the smsbao provider needs VG_SMSBAO_USER and VG_SMSBAO_KEY")
+			}
+			if u := c.SMSBaoBaseURL; u != "" && c.Strict() && !strings.HasPrefix(strings.ToLower(u), "https://") {
+				add("VG_SMSBAO_BASE_URL", "must be https in "+string(c.Env))
+			}
 		case "log":
 			if c.Strict() {
 				add("VG_SMS_PROVIDER", "the log provider prints verification codes and must not be used in "+string(c.Env))
 			}
 		case "":
-			add("VG_SMS_PROVIDER", "auth.sms_login needs an SMS provider (http)")
+			add("VG_SMS_PROVIDER", "auth.sms_login needs an SMS provider (smsbao or http)")
 		default:
-			add("VG_SMS_PROVIDER", "unknown provider (use http; log is for development/test)")
+			add("VG_SMS_PROVIDER", "unknown provider (use smsbao or http; log is for development/test)")
 		}
 	}
 	if !c.Strict() {

@@ -32,6 +32,8 @@ func identityMux(cfg config.Config, pool *sql.DB, pm *metrics.Platform, log *slo
 	switch cfg.SMSProvider {
 	case "http":
 		sms = &adapters.HTTPSender{URL: cfg.SMSHTTPURL, Token: cfg.SMSHTTPToken}
+	case "smsbao":
+		sms = &adapters.SMSBao{User: cfg.SMSBaoUser, Key: cfg.SMSBaoKey, BaseURL: cfg.SMSBaoBaseURL}
 	case "log":
 		sms = adapters.LogSender{Log: log}
 	default:

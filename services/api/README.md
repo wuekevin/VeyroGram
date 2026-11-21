@@ -22,7 +22,8 @@ a signing key shorter than 32 bytes or a known default, wildcard CORS, debug mod
 | `VG_CORS_ALLOWED_ORIGINS` | — | comma-separated exact origins |
 | `VG_MYSQL_DSN` | — | used from Story 1.3 |
 | `VG_AUTH_SMS_LOGIN` | `false` | feature flag `auth.sms_login`: `/v1/auth/*` exists only when `true` (Story 1.12) |
-| `VG_SMS_PROVIDER` | — | `http` (generic JSON gateway) in staging/production; `log` prints codes and is refused outside development/test |
+| `VG_SMS_PROVIDER` | — | `smsbao` (短信宝, recommended) or `http` (generic JSON gateway) in staging/production; `log` prints codes and is refused outside development/test |
+| `VG_SMSBAO_USER` / `VG_SMSBAO_KEY` | — | 短信宝 account and ApiKey (secret) for provider `smsbao`; `+86` numbers use the domestic API, all others the international API |
 | `VG_SMS_HTTP_URL` / `VG_SMS_HTTP_TOKEN` | — | gateway for the `http` provider (https required); posts `{"to":"+E164","message":"..."}` with a bearer token |
 | `VG_TOKEN_KEYS` | — | `kid:base64url(32-byte seed)[,kid2:...]`; the first key signs 15-minute access tokens (EdDSA), the others only verify (rotation). Generate: `openssl rand 32 \| base64 \| tr '+/' '-_' \| tr -d =` |
 | `VG_PHONE_HASH_KEY` | — | >= 32 bytes; HMAC key for the phone blind index and code hashes. **Changing it orphans every account**: treat it like a database key, back it up, never rotate casually |
