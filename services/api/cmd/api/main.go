@@ -74,6 +74,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("/", httpx.NotFound)
 	var handler http.Handler = publicMux
+	var authMux *http.ServeMux // /v1/auth/* answers carry credentials, so it is never run through the idempotency response cache
 	if cfg.MySQLDSN != "" {
 		pool, err := db.Open(cfg.MySQLDSN)
 		if err != nil {
@@ -91,6 +92,21 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 			}
 		})
 		handler = idempotency.Middleware(&idempotency.Store{DB: pool}, nil, nil)(handler)
+		if cfg.AuthSMSLogin {
+			m, err := identityMux(cfg, pool, pm, log)
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitConfig
+			}
+			authMux = m
+		}
+	}
+	if authMux != nil {
+		rest := handler
+		top := http.NewServeMux()
+		top.Handle("/v1/auth/", authMux)
+		top.Handle("/", rest)
+		handler = top
 	}
 	clock := func() float64 { return float64(time.Now().UnixNano()) / 1e9 }
 	handler = pm.Middleware(handler, clock)

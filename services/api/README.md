@@ -21,6 +21,12 @@ a signing key shorter than 32 bytes or a known default, wildcard CORS, debug mod
 | `VG_TOKEN_SIGNING_KEY` | — | required in staging/production |
 | `VG_CORS_ALLOWED_ORIGINS` | — | comma-separated exact origins |
 | `VG_MYSQL_DSN` | — | used from Story 1.3 |
+| `VG_AUTH_SMS_LOGIN` | `false` | feature flag `auth.sms_login`: `/v1/auth/*` exists only when `true` (Story 1.12) |
+| `VG_SMS_PROVIDER` | — | `http` (generic JSON gateway) in staging/production; `log` prints codes and is refused outside development/test |
+| `VG_SMS_HTTP_URL` / `VG_SMS_HTTP_TOKEN` | — | gateway for the `http` provider (https required); posts `{"to":"+E164","message":"..."}` with a bearer token |
+| `VG_TOKEN_KEYS` | — | `kid:base64url(32-byte seed)[,kid2:...]`; the first key signs 15-minute access tokens (EdDSA), the others only verify (rotation). Generate: `openssl rand 32 \| base64 \| tr '+/' '-_' \| tr -d =` |
+| `VG_PHONE_HASH_KEY` | — | >= 32 bytes; HMAC key for the phone blind index and code hashes. **Changing it orphans every account**: treat it like a database key, back it up, never rotate casually |
+| `VG_TRUSTED_PROXIES` | — | CIDRs/IPs whose `X-Forwarded-For` is honoured (the Nginx host); empty = trust nobody (AD-16) |
 
 ## Develop
 ```

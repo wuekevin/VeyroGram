@@ -10,6 +10,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"veyrogram/api/internal/platform/clientip"
+	"veyrogram/api/internal/platform/token"
 )
 
 // Env is the deployment environment. An unset or empty VG_ENV is treated as production (fail closed).
@@ -42,6 +44,13 @@ type Config struct {
 	IMWebhookSigning   string // optional HMAC key; when set, callbacks must carry a valid signature (needs the patched WuKongIM)
 	IMWebhookSecret    string // path secret for the callback URL (WuKongIM sends no signature); empty disables the callback listener
 	MySQLDSN           string
+	AuthSMSLogin       bool     // feature flag auth.sms_login: /v1/auth/* is not routed unless true (Story 1.12)
+	SMSProvider        string   // "http" (generic JSON gateway) or "log" (development/test only; prints codes to the log)
+	SMSHTTPURL         string   // gateway endpoint for the "http" provider; https outside development/test
+	SMSHTTPToken       string   // bearer token for the gateway
+	TokenKeys          string   // kid:base64url(32-byte seed)[,...]; the first key signs access tokens (AD-9)
+	PhoneHashKey       string   // HMAC key for the phone blind index and one-time-code hashes
+	TrustedProxies     []string // CIDRs/IPs whose X-Forwarded-For is honoured; empty trusts nobody (AD-16)
 }
 
 // Violation is one rejected setting.
@@ -78,6 +87,12 @@ func Load(getenv func(string) string) (Config, []Violation) {
 		AuditAnchorURL:     getenv("VG_AUDIT_ANCHOR_URL"),
 		AuditAnchorToken:   getenv("VG_AUDIT_ANCHOR_TOKEN"),
 		MetricsToken:       getenv("VG_METRICS_TOKEN"),
+		SMSProvider:        strings.ToLower(getenv("VG_SMS_PROVIDER")),
+		SMSHTTPURL:         getenv("VG_SMS_HTTP_URL"),
+		SMSHTTPToken:       getenv("VG_SMS_HTTP_TOKEN"),
+		TokenKeys:          getenv("VG_TOKEN_KEYS"),
+		PhoneHashKey:       getenv("VG_PHONE_HASH_KEY"),
+		TrustedProxies:     splitList(getenv("VG_TRUSTED_PROXIES")),
 		CORSAllowedOrigins: splitList(getenv("VG_CORS_ALLOWED_ORIGINS")),
 	}
 	switch e := Env(strings.ToLower(strings.TrimSpace(getenv("VG_ENV")))); e {
@@ -95,6 +110,13 @@ func Load(getenv func(string) string) (Config, []Violation) {
 		c.Debug = true
 	default:
 		vs = append(vs, Violation{"VG_DEBUG", "must be true or false"})
+	}
+	switch strings.ToLower(strings.TrimSpace(getenv("VG_AUTH_SMS_LOGIN"))) {
+	case "", "0", "false":
+	case "1", "true":
+		c.AuthSMSLogin = true
+	default:
+		vs = append(vs, Violation{"VG_AUTH_SMS_LOGIN", "must be true or false"})
 	}
 	return c, append(vs, c.Validate()...)
 }
@@ -122,8 +144,42 @@ func (c Config) Validate() []Violation {
 	if u, err := url.Parse(c.IMAPIURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		add("VG_IM_API_URL", "must be an absolute http(s) URL")
 	}
+	if _, err := clientip.ParseTrusted(c.TrustedProxies); err != nil {
+		add("VG_TRUSTED_PROXIES", err.Error())
+	}
+	if c.AuthSMSLogin {
+		if c.MySQLDSN == "" {
+			add("VG_MYSQL_DSN", "auth.sms_login needs the database")
+		}
+		if _, err := token.ParseRing(c.TokenKeys); err != nil {
+			add("VG_TOKEN_KEYS", err.Error())
+		}
+		if len(c.PhoneHashKey) < 32 || weakValues[strings.ToLower(c.PhoneHashKey)] {
+			add("VG_PHONE_HASH_KEY", "auth.sms_login needs a key of at least 32 bytes that is not a known default")
+		}
+		switch c.SMSProvider {
+		case "http":
+			u, err := url.Parse(c.SMSHTTPURL)
+			if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && !c.Strict())) {
+				add("VG_SMS_HTTP_URL", "must be an absolute https URL (http only in development/test)")
+			}
+		case "log":
+			if c.Strict() {
+				add("VG_SMS_PROVIDER", "the log provider prints verification codes and must not be used in "+string(c.Env))
+			}
+		case "":
+			add("VG_SMS_PROVIDER", "auth.sms_login needs an SMS provider (http)")
+		default:
+			add("VG_SMS_PROVIDER", "unknown provider (use http; log is for development/test)")
+		}
+	}
 	if !c.Strict() {
 		return vs
+	}
+	for _, p := range c.TrustedProxies {
+		if p == "0.0.0.0/0" || p == "::/0" {
+			add("VG_TRUSTED_PROXIES", "trusting every address defeats client-IP resolution (AD-16); list the proxy addresses")
+		}
 	}
 	if u := c.AuditAnchorURL; u != "" && !strings.HasPrefix(strings.ToLower(u), "https://") {
 		add("VG_AUDIT_ANCHOR_URL", "the audit anchor store must be reached over https")

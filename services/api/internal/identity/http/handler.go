@@ -1,0 +1,158 @@
+// Package identityhttp serves /v1/auth/*. It is mounted only when the auth.sms_login flag is on.
+package identityhttp
+
+import (
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"strconv"
+
+	"veyrogram/api/internal/identity/app"
+	"veyrogram/api/internal/identity/domain"
+	"veyrogram/api/internal/platform/clientip"
+	"veyrogram/api/internal/platform/httpx"
+)
+
+type Handler struct {
+	Svc     *app.Service
+	Trusted []*net.IPNet // AD-16
+	Log     *slog.Logger
+}
+
+// Mount registers the routes on mux.
+func (h *Handler) Mount(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v1/auth/sms/code", h.requestCode)
+	mux.HandleFunc("POST /v1/auth/login", h.login)
+	mux.HandleFunc("POST /v1/auth/refresh", h.refresh)
+}
+
+func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil || dec.More() {
+		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "malformed request body")
+		return false
+	}
+	return true
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store") // responses may carry credentials
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
+	var le *domain.LimitError
+	switch {
+	case errors.As(err, &le):
+		secs := int(le.RetryAfter.Seconds())
+		if secs < 1 {
+			secs = 1
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(secs))
+		w.Header().Set("RateLimit-Remaining", "0")
+		w.Header().Set("RateLimit-Reset", strconv.Itoa(secs))
+		code, msg := "rate_limited", "too many requests, try again later"
+		if le.Locked {
+			code, msg = "too_many_attempts", "too many failed attempts, try again later"
+		}
+		httpx.WriteError(w, r, http.StatusTooManyRequests, code, msg)
+	case errors.Is(err, domain.ErrInvalidInput):
+		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request")
+	case errors.Is(err, domain.ErrInvalidCode):
+		httpx.WriteError(w, r, http.StatusUnauthorized, "invalid_code", "the verification code is invalid or expired")
+	case errors.Is(err, domain.ErrInvalidRefresh):
+		httpx.WriteError(w, r, http.StatusUnauthorized, "invalid_refresh_token", "the refresh token is invalid, expired or revoked")
+	case errors.Is(err, domain.ErrDisabled):
+		httpx.WriteError(w, r, http.StatusForbidden, "account_disabled", "this account is disabled")
+	case errors.Is(err, domain.ErrSMSUnavailable):
+		httpx.WriteError(w, r, http.StatusServiceUnavailable, "sms_unavailable", "could not send the verification code, try again later")
+	default:
+		if h.Log != nil {
+			h.Log.Error("auth request failed", "err", err.Error(), "trace_id", r.Header.Get("X-Request-Id"))
+		}
+		httpx.WriteError(w, r, http.StatusInternalServerError, "internal", "internal error")
+	}
+}
+
+func (h *Handler) ip(r *http.Request) string { return clientip.From(r, h.Trusted) }
+
+// POST /v1/auth/sms/code {phone, device_id} -> 202. The answer is identical for registered and unregistered numbers.
+func (h *Handler) requestCode(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Phone    string `json:"phone"`
+		DeviceID string `json:"device_id"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	err := h.Svc.RequestCode(r.Context(), app.RequestInput{Phone: in.Phone, DeviceKey: in.DeviceID, IP: h.ip(r), TraceID: r.Header.Get("X-Request-Id")})
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	p := h.Svc.Policy
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "sent", "expires_in": int(p.CodeTTL.Seconds()), "resend_after": int(p.SendCooldown.Seconds())})
+}
+
+type tokensOut struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+	UserID       string `json:"user_id"`
+	DeviceID     string `json:"device_id"`
+	IsNewUser    bool   `json:"is_new_user"`
+}
+
+func out(t app.Tokens) tokensOut {
+	return tokensOut{t.Access, "Bearer", t.ExpiresIn, t.Refresh, t.UserUID, strconv.FormatUint(t.DeviceID, 10), t.IsNew}
+}
+
+// POST /v1/auth/login {phone, code, device:{id,class,name}}
+func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Phone  string `json:"phone"`
+		Code   string `json:"code"`
+		Device struct {
+			ID    string `json:"id"`
+			Class string `json:"class"`
+			Name  string `json:"name"`
+		} `json:"device"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	dev, err := domain.ParseDevice(in.Device.ID, in.Device.Class, in.Device.Name)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	t, err := h.Svc.Login(r.Context(), app.LoginInput{Phone: in.Phone, Code: in.Code, Device: dev, IP: h.ip(r), TraceID: r.Header.Get("X-Request-Id")})
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out(t))
+}
+
+// POST /v1/auth/refresh {refresh_token}
+func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	t, err := h.Svc.Refresh(r.Context(), in.RefreshToken, h.ip(r), r.Header.Get("X-Request-Id"))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out(t))
+}

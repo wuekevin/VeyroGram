@@ -234,6 +234,7 @@ type Platform struct {
 	IMGWDuration    Histogram // op
 	IMWebhookReject Counter   // reason
 	OutboxEvents    Counter   // topic, result (done|retry|dead) - fed by the worker process
+	AuthEvents      Counter   // kind (sms_send|login|refresh), result - fed by the identity module
 }
 
 // NewPlatform registers the platform metrics and Go/DB gauges on r.
@@ -252,6 +253,7 @@ func NewPlatform(r *Registry) *Platform {
 		IMGWDuration:    r.Histogram("vg_imgw_call_duration_seconds", "imgw adapter call latency including retries.", []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5}, "op"),
 		IMWebhookReject: r.Counter("vg_im_webhook_rejected_total", "IM callbacks rejected before reaching policy (bad secret, source, shape).", "reason"),
 		OutboxEvents:    r.Counter("vg_outbox_events_total", "Outbox events handled by the worker, by topic and result.", "topic", "result"),
+		AuthEvents:      r.Counter("vg_auth_events_total", "Authentication events by kind and result (rate_limited, locked, reuse are risk signals).", "kind", "result"),
 		OutboxLag:       r.Gauge("vg_outbox_pending", "Pending outbox rows (placeholder until Story 1.4)."),
 	}
 	p.Connections.Touch()
@@ -265,6 +267,7 @@ func NewPlatform(r *Registry) *Platform {
 	p.IMGWCalls.Touch("health", "ok")
 	p.IMWebhookReject.Touch("bad_secret")
 	p.OutboxEvents.Touch("none", "done")
+	p.AuthEvents.Touch("login", "ok")
 	return p
 }
 

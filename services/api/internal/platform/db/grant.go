@@ -10,7 +10,7 @@ import (
 var identRE = regexp.MustCompile(`^[A-Za-z0-9_$.\-]{1,64}$`)
 
 // appendOnly tables get SELECT and INSERT only: the application account can never rewrite them (AD-15).
-var appendOnly = map[string]bool{"audit_log": true}
+var appendOnly = map[string]bool{"audit_log": true, "login_event": true}
 
 // GrantApp grants the application account table-level DML on every table of database, and SELECT+INSERT only on append-only tables.
 // Run it as an administrator after every migration. The account must already exist.

@@ -1,0 +1,159 @@
+openapi: 3.1.0
+info:
+  title: VeyroGram Auth API
+  version: 1.0.0
+  description: |
+    Phone + one-time-code registration/login and rotating refresh tokens (Story 1.12, ARCHITECTURE AD-9/AD-16).
+    Registration and login are one flow: the first successful login for a phone number creates the account.
+    Feature flag `auth.sms_login` (VG_AUTH_SMS_LOGIN): when off these routes do not exist (404).
+    Every error uses the standard envelope {code, message, trace_id, details}.
+servers:
+  - url: /
+paths:
+  /v1/auth/sms/code:
+    post:
+      operationId: requestSmsCode
+      summary: Send a random one-time code to a phone number
+      description: |
+        The answer is identical for registered and unregistered numbers (no account enumeration).
+        Limits (defaults): 1 per 60 s and 5 per hour per number, 20 per hour per IP, 10 per hour per device, 2000 per hour overall.
+        A limited request answers 429 with Retry-After and is recorded as a risk event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SmsCodeRequest' }
+      responses:
+        '202':
+          description: A code was sent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SmsCodeResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/auth/login:
+    post:
+      operationId: login
+      summary: Exchange phone + code for tokens (registers the user on first use)
+      description: |
+        A wrong, expired, already-used or never-requested code all answer 401 invalid_code.
+        After 5 failures per number, 30 per IP or 10 per device within 15 minutes the caller is locked out (429 too_many_attempts).
+        A code is single-use and dies after 5 wrong guesses. Responses are never cached (Cache-Control: no-store) and are excluded from Idempotency-Key replay.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Signed in.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /v1/auth/refresh:
+    post:
+      operationId: refreshToken
+      summary: Rotate a refresh token
+      description: |
+        The presented token is consumed and a new access/refresh pair is returned. Presenting a token that was already rotated is treated as theft:
+        the device is revoked and every token of that device stops working.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: New token pair.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+components:
+  schemas:
+    Phone:
+      type: string
+      description: E.164 (spaces and dashes are tolerated). No region is guessed.
+      pattern: '^\+[1-9][0-9]{7,14}$'
+      examples: ['+8613800138000']
+    DeviceId:
+      type: string
+      description: Random value generated once per installation and stored in the platform secure store.
+      pattern: '^[A-Za-z0-9_-]{16,64}$'
+    SmsCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, device_id]
+      properties:
+        phone: { $ref: '#/components/schemas/Phone' }
+        device_id: { $ref: '#/components/schemas/DeviceId' }
+    SmsCodeResponse:
+      type: object
+      required: [status, expires_in, resend_after]
+      properties:
+        status: { type: string, enum: [sent] }
+        expires_in: { type: integer, description: Seconds the code is valid. }
+        resend_after: { type: integer, description: Seconds before another code may be requested. }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, code, device]
+      properties:
+        phone: { $ref: '#/components/schemas/Phone' }
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+        device:
+          type: object
+          additionalProperties: false
+          required: [id, class]
+          properties:
+            id: { $ref: '#/components/schemas/DeviceId' }
+            class: { type: string, enum: [app, web, pc] }
+            name: { type: string, maxLength: 100 }
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, refresh_token, user_id, device_id, is_new_user]
+      properties:
+        access_token: { type: string, description: Short-lived signed token (EdDSA, kid header); send as Authorization Bearer. }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, description: Access-token lifetime in seconds (900). }
+        refresh_token: { type: string, description: Opaque, single-use; replace the stored one on every refresh. }
+        user_id: { type: string }
+        device_id: { type: string }
+        is_new_user: { type: boolean }
+    Error:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: string
+          description: invalid_request, invalid_code, invalid_refresh_token, account_disabled, rate_limited, too_many_attempts, sms_unavailable, internal
+        message: { type: string }
+        trace_id: { type: string }
+        details: { type: array, items: { type: string } }
+  responses:
+    Error:
+      description: Error envelope.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Rate limited or locked out.
+      headers:
+        Retry-After: { schema: { type: integer }, description: Seconds (an upper bound). }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

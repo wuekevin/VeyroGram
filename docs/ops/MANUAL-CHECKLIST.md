@@ -220,7 +220,7 @@ VG_AUDIT_ANCHOR_TOKEN=<写令牌>
 |---|---|---|
 | Redis 7 集成测试 | 本机 brew 只有 6.2/8.x，无 7.x，也没有 Docker | 不需要你做：需要 Redis 的 Story（如 1.13 令牌黑名单）开始时，我会在本机用源码编译 Redis 7.x 来测；生产 Linux 机上请按 C1 装 7.x 并核对版本 |
 | 多节点 IM 集群、踢线传播 | 3 台机器 | v1 目标单节点；做集群前需要单独立项 |
-| 真实短信 | OQ-8 的服务商账号 | 开通后把 AccessKey 放进 `/etc/veyrogram/api.env`（不要发给我） |
+| 真实短信（Story 1.12 服务端已完成，仅缺通道） | OQ-8 的服务商账号 + 一个 HTTPS 网关 | 服务端按通用 JSON 协议调用网关：`POST $VG_SMS_HTTP_URL`，头 `Authorization: Bearer $VG_SMS_HTTP_TOKEN`，体 `{"to":"+8613800138000","message":"【VeyroGram】验证码 123456，5 分钟内有效。请勿告诉他人。"}`，任何 2xx 视为成功。服务商的签名/模板（国内短信需备案签名与模板）由你方网关或一个很薄的转发脚本处理；选定服务商后告诉我，我可以写专用适配器。上线前在 `/etc/veyrogram/api.env` 设置 `VG_AUTH_SMS_LOGIN=true`、`VG_SMS_PROVIDER=http`、`VG_SMS_HTTP_URL`、`VG_SMS_HTTP_TOKEN`、`VG_TOKEN_KEYS`、`VG_PHONE_HASH_KEY`、`VG_TRUSTED_PROXIES`（=Nginx 所在地址）。令牌密钥：`openssl rand 32 \| base64 \| tr '+/' '-_' \| tr -d =`，填成 `VG_TOKEN_KEYS=k1:<结果>`；手机号哈希密钥：`openssl rand -hex 32`。**`VG_PHONE_HASH_KEY` 上线后不能改**（改了所有账号都找不到），必须备份。上线后用一个真手机号走一遍收码→登录→刷新，再故意输错 5 次，确认被锁定。 |
 | 推送（APNs/FCM） | Apple/Google 开发者账号（OQ-5） | 创建推送证书/密钥，放服务器密文目录 |
 | 对象存储 | S3 兼容服务（OQ-9） | 建桶、开版本控制，给我访问域名与权限策略（密钥自己放服务器） |
 | iOS/Android 真机与商店构建 | Xcode 签名证书、Android SDK/签名 keystore | Story 1.9 开始时，我会列出具体的安装/签名步骤 |

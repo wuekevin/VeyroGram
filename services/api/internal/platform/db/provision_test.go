@@ -92,6 +92,17 @@ func TestProvisionThenMigrateThenGrantGivesTheThreeAccountModel(t *testing.T) {
 	if _, err := appDB.Exec("DELETE FROM audit_log"); err == nil {
 		t.Fatal("app must not delete audit_log")
 	}
+	if _, err := appDB.Exec("INSERT INTO login_event (kind, result, created_at) VALUES ('login','ok',NOW(3))"); err != nil {
+		t.Fatalf("app must be able to append login events: %v", err)
+	}
+	for _, q := range []string{"UPDATE login_event SET result='ok'", "DELETE FROM login_event"} {
+		if _, err := appDB.Exec(q); err == nil {
+			t.Fatalf("app must not rewrite login_event (%s)", q)
+		}
+	}
+	if _, err := appDB.Exec("UPDATE sms_code SET attempts=0"); err != nil {
+		t.Fatalf("app needs UPDATE on sms_code: %v", err)
+	}
 	// rotation: re-provisioning with a new password invalidates the old one
 	newPass := "N" + strings.Repeat("n", 30) + sfx
 	if err := db.Provision(ctx, admin, database, "127.0.0.1", app, newPass, mig, migPass); err != nil {

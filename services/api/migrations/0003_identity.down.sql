@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS login_event;
+DROP TABLE IF EXISTS sms_code;
+DROP TABLE IF EXISTS refresh_token;
+DROP TABLE IF EXISTS device;
+DROP TABLE IF EXISTS user;

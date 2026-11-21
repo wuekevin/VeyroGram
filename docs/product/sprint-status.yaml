@@ -47,7 +47,7 @@ development_status:
   1-9-客户端构建基线-android-与-ios: ready-for-dev
   1-10-客户端构建基线-web-桌面与后台: ready-for-dev
   1-11-生成客户端与各端-im-sdk-接入: ready-for-dev
-  1-12-手机号注册与登录-服务端: ready-for-dev
+  1-12-手机号注册与登录-服务端: review
   1-13-设备-令牌与会话撤销-服务端: ready-for-dev
   1-14-登录与设备页客户端-四端最小实现: ready-for-dev
   1-15-单聊消息收发-服务端与-before_send-骨架: ready-for-dev

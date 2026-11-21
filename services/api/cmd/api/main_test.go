@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -170,16 +172,16 @@ func TestMigrateUpStatusDownAgainstRealMySQL(t *testing.T) {
 	_, dsn := testdb.NewWithDSN(t)
 	bin := build(t)
 	env := []string{"VG_ENV=development", "VG_MYSQL_DSN=" + dsn}
-	if so, se, code := runBin(t, bin, env, "migrate", "up"); code != 0 || !strings.Contains(so, "applied: [1 2]") {
+	if so, se, code := runBin(t, bin, env, "migrate", "up"); code != 0 || !strings.Contains(so, "applied: [1 2 3]") {
 		t.Fatalf("up failed: %d %q %q", code, so, se)
 	}
-	if so, _, code := runBin(t, bin, env, "migrate", "status"); code != 0 || !strings.Contains(so, "applied=[1 2] pending=[] dirty=false") {
+	if so, _, code := runBin(t, bin, env, "migrate", "status"); code != 0 || !strings.Contains(so, "applied=[1 2 3] pending=[] dirty=false") {
 		t.Fatalf("status after up: %d %q", code, so)
 	}
 	if so, _, code := runBin(t, bin, env, "migrate", "up"); code != 0 || !strings.Contains(so, "applied: []") {
 		t.Fatalf("second up must be a no-op: %d %q", code, so)
 	}
-	if so, _, code := runBin(t, bin, env, "migrate", "down"); code != 0 || !strings.Contains(so, "reverted: [2]") {
+	if so, _, code := runBin(t, bin, env, "migrate", "down"); code != 0 || !strings.Contains(so, "reverted: [3]") {
 		t.Fatalf("down failed: %d %q", code, so)
 	}
 	if _, _, code := runBin(t, bin, env, "migrate", "down", "0"); code != 2 {
@@ -560,5 +562,82 @@ func TestAuditCheckAnchorsCommandAgainstAnAnchorStore(t *testing.T) {
 	}
 	if _, se, code := runBin(t, bin, env, "audit", "check-anchors"); code != 1 || !strings.Contains(se, "anchor") {
 		t.Fatalf("tail truncation must be detected against the off-host anchor: %d %q", code, se)
+	}
+}
+
+// ---- Story 1.12: phone/SMS auth against the real binary ----
+
+const authSeed = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
+
+func authEnv(dsn string, extra ...string) []string {
+	return append([]string{"VG_MYSQL_DSN=" + dsn, "VG_AUTH_SMS_LOGIN=true", "VG_SMS_PROVIDER=log", "VG_TOKEN_KEYS=k1:" + authSeed,
+		"VG_PHONE_HASH_KEY=phone-hash-key-0123456789abcdef-strong"}, extra...)
+}
+
+func jpost(t *testing.T, url, body string, hdr ...string) (int, map[string]any) {
+	t.Helper()
+	req, _ := http.NewRequest("POST", url, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	for i := 0; i+1 < len(hdr); i += 2 {
+		req.Header.Set(hdr[i], hdr[i+1])
+	}
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	return resp.StatusCode, m
+}
+
+func TestAuthRegisterLoginRefreshOverRealHTTP(t *testing.T) {
+	d, dsn, _ := migrated(t)
+	p := start(t, authEnv(dsn)...)
+	base := "http://" + p.pub
+	const dev = `"device_id":"device-aaaaaaaaaaaaaaaa"`
+	if code, _ := jpost(t, base+"/v1/auth/sms/code", `{"phone":"+8613800138000",`+dev+`}`); code != 202 {
+		t.Fatalf("send code: %d", code)
+	}
+	m := regexp.MustCompile(`验证码 (\d{6})`).FindStringSubmatch(p.stderr.String())
+	if m == nil {
+		t.Fatalf("dev log provider did not print a code:\n%s", p.stderr.String())
+	}
+	if strings.Contains(p.stderr.String(), "13800138000") {
+		t.Fatal("the full phone number must never reach the logs")
+	}
+	login := `{"phone":"+8613800138000","code":"` + m[1] + `","device":{"id":"device-aaaaaaaaaaaaaaaa","class":"app","name":"Pixel"}}`
+	// an Idempotency-Key on a credential-bearing endpoint must not make the server store the tokens
+	code, body := jpost(t, base+"/v1/auth/login", login, "Idempotency-Key", "idem-key-0123456789")
+	if code != 200 || body["access_token"] == nil || body["refresh_token"] == nil {
+		t.Fatalf("login: %d %v", code, body)
+	}
+	var n int
+	if err := d.QueryRow("SELECT COUNT(*) FROM idempotency_key").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("auth responses must not enter the idempotency cache (rows=%d err=%v)", n, err)
+	}
+	code, body2 := jpost(t, base+"/v1/auth/refresh", `{"refresh_token":"`+body["refresh_token"].(string)+`"}`)
+	if code != 200 || body2["refresh_token"] == body["refresh_token"] {
+		t.Fatalf("refresh: %d %v", code, body2)
+	}
+	if code, _ := jpost(t, base+"/v1/auth/nope", `{}`); code != 404 {
+		t.Fatalf("unknown auth path: %d", code)
+	}
+	if c, mt := get(t, "http://"+p.internal+"/metrics", ""); c == 200 && strings.Contains(mt, "vg_auth_events_total") {
+		t.Fatal("metrics must need the bearer token")
+	}
+}
+
+func TestAuthRoutesAbsentWhenFlagOffAndStartupGuards(t *testing.T) {
+	_, dsn, bin := migrated(t)
+	p := start(t, "VG_MYSQL_DSN="+dsn)
+	if code, _ := jpost(t, "http://"+p.pub+"/v1/auth/login", `{}`); code != 404 {
+		t.Fatalf("auth.sms_login off: routes must not exist, got %d", code)
+	}
+	prod := []string{"VG_ENV=production", "VG_MYSQL_DSN=vg_app:s3cret-pass@tcp(127.0.0.1:3306)/x", "VG_TOKEN_SIGNING_KEY=0123456789abcdef0123456789abcdef-strong",
+		"VG_AUTH_SMS_LOGIN=true", "VG_SMS_PROVIDER=log", "VG_TOKEN_KEYS=k1:" + authSeed, "VG_PHONE_HASH_KEY=phone-hash-key-0123456789abcdef-strong"}
+	if so, se, code := runBin(t, bin, prod, "-check-config"); code == 0 || !strings.Contains(se+so, "VG_SMS_PROVIDER") {
+		t.Fatalf("production with the log SMS provider must be refused: %d %s%s", code, so, se)
 	}
 }

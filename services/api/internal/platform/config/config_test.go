@@ -114,3 +114,48 @@ func TestInvalidDebugValueRejected(t *testing.T) {
 		t.Fatalf("invalid VG_DEBUG must be rejected, got %q", keys(vs))
 	}
 }
+
+func authOn() map[string]string {
+	m := good()
+	m["VG_AUTH_SMS_LOGIN"] = "true"
+	m["VG_SMS_PROVIDER"] = "http"
+	m["VG_SMS_HTTP_URL"] = "https://sms.example.com/send"
+	m["VG_TOKEN_KEYS"] = "k1:AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
+	m["VG_PHONE_HASH_KEY"] = "phone-hash-key-0123456789abcdef-strong"
+	m["VG_TRUSTED_PROXIES"] = "127.0.0.1, 10.0.0.0/8"
+	return m
+}
+
+func TestAuthSMSLoginRequiresSafeSettings(t *testing.T) {
+	if c, vs := Load(env(authOn())); len(vs) != 0 || !c.AuthSMSLogin {
+		t.Fatalf("good auth config rejected: %v", vs)
+	}
+	mut := func(k, v string) map[string]string { m := authOn(); m[k] = v; return m }
+	for name, tc := range map[string]struct {
+		m   map[string]string
+		key string
+	}{
+		"log provider in production": {mut("VG_SMS_PROVIDER", "log"), "VG_SMS_PROVIDER"},
+		"no provider":                {mut("VG_SMS_PROVIDER", ""), "VG_SMS_PROVIDER"},
+		"plain http gateway":         {mut("VG_SMS_HTTP_URL", "http://sms.example.com/send"), "VG_SMS_HTTP_URL"},
+		"no token keys":              {mut("VG_TOKEN_KEYS", ""), "VG_TOKEN_KEYS"},
+		"trivial token seed":         {mut("VG_TOKEN_KEYS", "k1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), "VG_TOKEN_KEYS"},
+		"short phone key":            {mut("VG_PHONE_HASH_KEY", "short"), "VG_PHONE_HASH_KEY"},
+		"trust everyone":             {mut("VG_TRUSTED_PROXIES", "0.0.0.0/0"), "VG_TRUSTED_PROXIES"},
+		"bad proxy entry":            {mut("VG_TRUSTED_PROXIES", "nonsense"), "VG_TRUSTED_PROXIES"},
+		"bad flag":                   {mut("VG_AUTH_SMS_LOGIN", "maybe"), "VG_AUTH_SMS_LOGIN"},
+	} {
+		if _, vs := Load(env(tc.m)); !strings.Contains(keys(vs), tc.key) {
+			t.Errorf("%s: expected violation on %s, got %v", name, tc.key, vs)
+		}
+	}
+	dev := authOn()
+	dev["VG_ENV"], dev["VG_SMS_PROVIDER"] = "development", "log"
+	if _, vs := Load(env(dev)); len(vs) != 0 {
+		t.Fatalf("log provider must be allowed in development: %v", vs)
+	}
+	off := good()
+	if c, vs := Load(env(off)); len(vs) != 0 || c.AuthSMSLogin {
+		t.Fatalf("auth must be off by default: %v", vs)
+	}
+}
