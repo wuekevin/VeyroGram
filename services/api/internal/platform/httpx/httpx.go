@@ -52,6 +52,13 @@ func WriteError(w http.ResponseWriter, r *http.Request, status int, code, messag
 	_ = json.NewEncoder(w).Encode(Error{Code: code, Message: message, TraceID: r.Header.Get("X-Request-Id")})
 }
 
+// WriteErrorDetails is WriteError plus a list of human-readable details (for example every password rule that was broken).
+func WriteErrorDetails(w http.ResponseWriter, r *http.Request, status int, code, message string, details []string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(Error{Code: code, Message: message, TraceID: r.Header.Get("X-Request-Id"), Details: details})
+}
+
 // NotFound is the catch-all handler for the public mux until modules register routes.
 func NotFound(w http.ResponseWriter, r *http.Request) {
 	WriteError(w, r, http.StatusNotFound, "not_found", "no such resource")

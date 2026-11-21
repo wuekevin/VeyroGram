@@ -107,3 +107,26 @@ tests:
       - eval_time: 6m
         alertname: VeyroGramSendGateFailClosed
         exp_alerts: []
+  - name: admin plane probing pages
+    interval: 1m
+    input_series:
+      - series: 'vg_admin_denied_total{reason="unauthenticated"}'
+        values: '0 0 5 20 45 80 120 120 120 120 120 120'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: VeyroGramAdminProbing
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: VeyroGramAdminProbing
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: "Many refused requests on the admin plane (unauthenticated, forbidden or outside the allowlist): someone is probing it. Check the audit log for admin.login.failed / admin.locked" }
+  - name: quiet admin plane stays silent
+    interval: 1m
+    input_series:
+      - series: 'vg_admin_denied_total{reason="unauthenticated"}'
+        values: '0 1 1 2 2 3 3'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: VeyroGramAdminProbing
+        exp_alerts: []

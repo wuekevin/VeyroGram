@@ -33,6 +33,7 @@ import (
 //	audit check-anchors [-days N] [-require-all]   compare the log with the last N days of off-host anchors
 //	audit anchor                verify, then write today's chain head to the off-host anchor store
 //	sync purge-tombstones [-days N]   delete cleared-draft tombstones older than N days (default 30)
+//	admin bootstrap -username U   create the first administrator (password from VG_ADMIN_BOOTSTRAP_PASSWORD or -password-stdin); works once
 //	outbox replay <id>          put a dead-lettered event back in the queue (and record it in the audit log)
 //	db provision [-database D -app-user U -migrator-user M -host H]   create/re-key the app and migrator accounts (admin; passwords from env)
 //	db grant-app -database D -user U -host H   (as admin, via VG_MYSQL_ADMIN_DSN) per-table grants for the application account
@@ -173,6 +174,8 @@ func runOps(args []string, getenv func(string) string, stderr *os.File) int {
 			fmt.Printf("purged %d draft tombstones older than %d days\n", n, *days)
 			return 0
 		}
+	case "admin":
+		return runAdmin(args[1:], getenv, cfg, pool, stderr)
 	case "outbox":
 		if len(args) == 3 && args[1] == "replay" {
 			id, err := strconv.ParseUint(args[2], 10, 64)

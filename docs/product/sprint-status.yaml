@@ -54,7 +54,7 @@ development_status:
   1-16-离线同步与多端一致-服务端: review
   1-17-聊天与同步客户端-android-与-ios: ready-for-dev
   1-18-聊天与同步客户端-web-与桌面: ready-for-dev
-  1-19-管理员初始化与-rbac-骨架-服务端: ready-for-dev
+  1-19-管理员初始化与-rbac-骨架-服务端: review
   1-20-管理面最小界面-登录-首页-审计: ready-for-dev
   1-21-安装向导与运维套件: ready-for-dev
   1-22-备份实现-mysql-pitr-im-存储-对象存储: ready-for-dev

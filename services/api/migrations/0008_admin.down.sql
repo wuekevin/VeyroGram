@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS admin_session;
+DROP TABLE IF EXISTS admin_challenge;
+DROP TABLE IF EXISTS system_state;
+DROP TABLE IF EXISTS admin_user;
+DROP TABLE IF EXISTS permission;
+DROP TABLE IF EXISTS role;

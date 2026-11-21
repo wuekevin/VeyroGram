@@ -51,4 +51,24 @@ check "none of those requests reached the upstream" '[[ ! -s "$tmp/upstream.log"
 c --path-as-is -o /dev/null "https://127.0.0.1:$ng/v1/../healthz"; c --path-as-is -o /dev/null "https://127.0.0.1:$ng/v1/%2e%2e/healthz"
 check "path-normalisation tricks never deliver /healthz to the upstream as a clean path" '! grep -qx "/healthz" "$tmp/upstream.log"'
 check "TLS 1.1 is refused" '! curl -ks --max-time 3 --tls-max 1.1 -o /dev/null https://127.0.0.1:'$ng'/v1/ping'
+# --- the admin plane's own site: only /v1/manager/ is forwarded, the user API's paths are not served on this hostname
+mg=$(port)
+SERVER_NAME=manager.test TLS_CERT=$tmp/c.pem TLS_KEY=$tmp/k.pem UPSTREAM=127.0.0.1:$up LISTEN=127.0.0.1:$mg \
+  "$root/infrastructure/scripts/render-nginx.sh" "$root/infrastructure/nginx/veyrogram-manager.conf.template" "$tmp/manager.conf"
+cat >"$tmp/nginx2.conf" <<CONF
+pid $tmp/nginx2.pid; error_log $tmp/logs/error2.log; daemon on;
+events {}
+http { access_log off; client_body_temp_path $tmp/b2; proxy_temp_path $tmp/p2; fastcgi_temp_path $tmp/f2; uwsgi_temp_path $tmp/u2; scgi_temp_path $tmp/s2;
+  include $tmp/manager.conf; }
+CONF
+check "nginx -t accepts the admin-plane template" 'nginx -t -p "$tmp" -c "$tmp/nginx2.conf" >"$tmp/t2.out" 2>&1'
+nginx -p "$tmp" -c "$tmp/nginx2.conf" 2>"$tmp/start2.err"; sleep 1
+: >"$tmp/upstream.log"
+check "/v1/manager/me is forwarded on the admin hostname" '[[ "$(c -o /dev/null -w %{http_code} https://127.0.0.1:'$mg'/v1/manager/me)" == 200 ]]'
+for p in /v1/auth/login /v1/messages /v1/sync/state /healthz /metrics /; do
+  code=$(c -o /dev/null -w '%{http_code}' "https://127.0.0.1:$mg$p")
+  check "$p is not served on the admin hostname (404)" '[[ "$code" == 404 ]]'
+done
+check "only the admin path reached the upstream" '[[ "$(cat "$tmp/upstream.log")" == "/v1/manager/me" ]]'
+kill "$(cat "$tmp/nginx2.pid")" 2>/dev/null
 echo; echo "passed=$pass failed=$fail"; [[ $fail -eq 0 ]]

@@ -63,3 +63,8 @@ groups:
         for: 2m
         labels: { severity: page }
         annotations: { summary: "The send-policy gate could not decide (error/timeout) and is denying messages fail-closed: users see send failures. Check MySQL and the before_send latency budget" }
+      - alert: VeyroGramAdminProbing
+        expr: sum(increase(vg_admin_denied_total{reason=~"unauthenticated|forbidden|ip_not_allowed"}[10m])) > 30
+        for: 0m
+        labels: { severity: page }
+        annotations: { summary: "Many refused requests on the admin plane (unauthenticated, forbidden or outside the allowlist): someone is probing it. Check the audit log for admin.login.failed / admin.locked" }

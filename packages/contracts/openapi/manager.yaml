@@ -1,0 +1,288 @@
+openapi: 3.1.0
+info:
+  title: VeyroGram Manager (admin plane) API
+  version: 1.0.0
+  description: |
+    Administrator API (Story 1.19, ARCHITECTURE AD-3, AD-9, AD-15, AD-24). It is served on its own listener (VG_MANAGER_ADDR, published through Nginx on a separate
+    hostname) and shares no route with the end-user API. Disabled unless VG_MANAGER_ENABLED=true. An optional IP allowlist (VG_MANAGER_ALLOW) refuses every other
+    address, login included.
+
+    Sign-in is always two steps and never yields a session after the password alone. The first administrator is created with the command line
+    (`veyrogram-api admin bootstrap`), which prints the TOTP secret once; there is no default account and no default password. Initialisation works once and is
+    decided by the database, not by a lock file.
+    1. `POST /v1/manager/login` checks the password and answers a single-use five-minute token with `state`:
+       `enrollment_required` (the administrator has not bound an authenticator yet) or `mfa_required`.
+    2. `POST /v1/manager/mfa/enroll` (first time: proves the authenticator app holds the secret from bootstrap or from the creating owner) or
+       `POST /v1/manager/mfa/verify` with that token and the current six-digit code. Only now is a session token issued. A TOTP code can be used once.
+    A wrong password or wrong code counts toward a lockout (5 failures, 15 minutes); a wrong code also consumes the token, so every guess needs the password again.
+
+    Every route declares its policy: a permission from `self`, `audit:read`, `audit:verify`, `admin:read`, `admin:write` (owner holds all; auditor holds
+    `self`, `audit:read`, `audit:verify`), or is one of the three public sign-in routes. Missing, invalid, expired, revoked or password-only tokens answer 401;
+    a valid session without the permission answers 403.
+
+    High-risk actions (`create admin`, `disable admin`) require a `reason` of at least 8 characters. The audit entry (actor, action, target, reason, time) is written to
+    the hash-chained audit log BEFORE the action takes effect; if it cannot be written the action does not happen.
+servers:
+  - url: /
+paths:
+  /v1/manager/login:
+    post:
+      operationId: managerLogin
+      summary: Step 1 - password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Password accepted; a second factor is still required.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [state, token]
+                properties:
+                  state: { type: string, enum: [mfa_required, enrollment_required] }
+                  token: { type: string, description: Single use, five minutes. Not a session. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/manager/mfa/verify:
+    post:
+      operationId: managerMfaVerify
+      summary: Step 2 - current TOTP code (administrators who already enrolled)
+      requestBody: { $ref: '#/components/requestBodies/CodeRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Session' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/manager/mfa/enroll:
+    post:
+      operationId: managerMfaEnroll
+      summary: Step 2 - first sign-in, binds the authenticator
+      requestBody: { $ref: '#/components/requestBodies/CodeRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Session' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/manager/logout:
+    post:
+      operationId: managerLogout
+      summary: End the session (permission self)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Signed out. }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/manager/me:
+    get:
+      operationId: managerMe
+      summary: Who am I (permission self)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: The caller.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, username, role, permissions]
+                properties:
+                  id: { type: integer }
+                  username: { type: string }
+                  role: { type: string, enum: [owner, auditor] }
+                  permissions: { type: array, items: { type: string } }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/manager/admins:
+    get:
+      operationId: listAdmins
+      summary: List administrators (permission admin:read)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: The administrators (never password hashes or secrets).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, username, role, active, mfa_enrolled]
+                      properties:
+                        id: { type: integer }
+                        username: { type: string }
+                        role: { type: string }
+                        active: { type: boolean }
+                        mfa_enrolled: { type: boolean }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createAdmin
+      summary: Create an administrator (permission admin:write, high risk)
+      description: The TOTP secret in the answer is shown once, for hand-over to the new administrator, who must enrol on first sign-in.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username, role, password, reason]
+              properties:
+                username: { type: string, pattern: '^[A-Za-z0-9._-]{3,64}$' }
+                role: { type: string, enum: [owner, auditor] }
+                password: { type: string, description: 12-128 characters, three of four character classes, not a common password, not containing the username. }
+                reason: { type: string, minLength: 8, maxLength: 500 }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, totp_secret, totp_uri]
+                properties:
+                  id: { type: integer }
+                  totp_secret: { type: string }
+                  totp_uri: { type: string }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/manager/admins/{id}/disable:
+    post:
+      operationId: disableAdmin
+      summary: Disable an administrator and end their sessions (permission admin:write, high risk)
+      description: You cannot disable yourself, and the last active owner cannot be disabled (409 last_owner).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 8, maxLength: 500 }
+      responses:
+        '204': { description: Disabled; their sessions ended at once. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/manager/audit:
+    get:
+      operationId: listAudit
+      summary: Read-only audit log, newest first (permission audit:read)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: actor, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: before_id, in: query, schema: { type: integer, minimum: 0 }, description: Continue after the last row of the previous page. }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: A page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, actor, action, target, trace_id, created_at]
+                      properties:
+                        id: { type: integer }
+                        actor: { type: string }
+                        action: { type: string }
+                        target: { type: string }
+                        detail: { type: string }
+                        trace_id: { type: string }
+                        created_at: { type: string, format: date-time }
+                  next_before_id: { type: integer }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/manager/audit/verify:
+    get:
+      operationId: verifyAudit
+      summary: Recompute the audit hash chain (permission audit:verify)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: ok=false means the stored chain does not match its own hashes (tampering or corruption).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+                  rows: { type: integer }
+                  head_id: { type: integer }
+                  head_hash: { type: string }
+                  error: { type: string }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, description: The session_token from mfa/verify or mfa/enroll. }
+  requestBodies:
+    CodeRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [token, code]
+            properties:
+              token: { type: string }
+              code: { type: string, pattern: '^[0-9]{6}$' }
+  schemas:
+    Error:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code: { type: string, description: 'invalid_request, unauthenticated, forbidden, invalid_credentials, invalid_challenge, invalid_code, locked, rate_limited, weak_password, reason_required, already_exists, last_owner, not_found, internal' }
+        message: { type: string }
+        trace_id: { type: string }
+        details: { type: array, items: { type: string }, description: For weak_password, every rule that was broken. }
+  responses:
+    Error:
+      description: Error envelope.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Session:
+      description: Signed in.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [session_token, expires_at, username, role]
+            properties:
+              session_token: { type: string }
+              expires_at: { type: string, format: date-time }
+              username: { type: string }
+              role: { type: string }

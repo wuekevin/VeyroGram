@@ -159,6 +159,27 @@ nginx -t && systemctl reload nginx
 
 ---
 
+### C7. 管理面与首个管理员（Story 1.19）
+管理面是**独立监听、独立主机名**，默认关闭。上线步骤：
+```
+# 1) /etc/veyrogram/api.env（0600，root:veyrogram）增加；密钥自己生成，不要发给我：
+VG_MANAGER_ENABLED=true
+VG_MANAGER_ADDR=127.0.0.1:9103
+VG_ADMIN_TOTP_KEY=$(openssl rand -hex 32)        # 管理员 TOTP 密钥的加密密钥；丢失 = 所有管理员需重新绑定，备份到密码管理器
+# VG_MANAGER_ALLOW=203.0.113.0/24                  # 强烈建议：只允许办公网/VPN 访问管理面
+# 2) 创建首个管理员（只能做一次；口令不经命令行参数，走环境变量或标准输入；必须强口令）：
+sudo -u veyrogram bash -c 'set -a; . /etc/veyrogram/api.env; read -rsp "管理员口令: " VG_ADMIN_BOOTSTRAP_PASSWORD; echo; export VG_ADMIN_BOOTSTRAP_PASSWORD; /opt/veyrogram/api/current/veyrogram-api admin bootstrap -username <你的管理员名>'
+#    命令会打印 TOTP 密钥和 otpauth URI——只显示一次，立刻用手机验证器（Google Authenticator/1Password 等）添加。
+# 3) 为管理面单独申请证书和域名（例如 manager.<域名>），用独立站点模板：
+SERVER_NAME=manager.<域名> TLS_CERT=... TLS_KEY=... UPSTREAM=127.0.0.1:9103 infrastructure/scripts/render-nginx.sh infrastructure/nginx/veyrogram-manager.conf.template /www/server/panel/vhost/nginx/veyrogram-manager.conf
+#    模板里有可选的 allow/deny 行（办公网/VPN），按需取消注释。不要把管理面域名和用户 API 域名放在同一个站点里。
+systemctl restart veyrogram-api
+```
+- **首次登录**：`POST /v1/manager/login` 用口令换一个 5 分钟的一次性令牌，再 `POST /v1/manager/mfa/enroll`，带上验证器当前的 6 位码（证明验证器里确实有第 2 步的密钥）；之后每次登录走 `mfa/verify`。口令单独永远换不到会话。
+- **验证**：用错误口令、空口令、`admin`/`Password123!` 这类弱口令运行 bootstrap，应被拒绝；再运行一次 bootstrap（即使删除了任何 `install.lock` 文件）应提示 already initialised；`GET /v1/manager/me` 不带令牌应为 401；审计：`GET /v1/manager/audit/verify` 应返回 `ok: true`。
+- **告警**：`VeyroGramAdminProbing`（管理面被拒绝请求激增）；管理员被锁定会写入审计 `admin.locked`。
+- **还没有的（诚实说明）**：高危动作目前只需要 owner + 理由并写审计，AD-3 提到的“高危动作需第二人审批”没有做；管理员忘记口令/丢失验证器的恢复流程没有做（目前只能由另一位 owner 禁用后重建，或直接在数据库里处理，所以至少保留两个 owner）；管理面 Web 界面属于 Manager 前端 Story。
+
 ## D. 审计锚点的异地存储（防“控制了数据库的人改历史”）
 
 为什么必须你来：它必须部署在**主机和数据库管理员都无法改动**的另一台机器/另一个云账号上，这是安全属性本身，我不能在同一台机器上“模拟”。

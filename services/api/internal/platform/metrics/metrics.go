@@ -236,6 +236,7 @@ type Platform struct {
 	IMWebhookReject Counter   // reason
 	OutboxEvents    Counter   // topic, result (done|retry|dead) - fed by the worker process
 	DenyDegraded    Counter   // access tokens served without a deny-list check (Redis down/unconfigured): revocation falls back to the token TTL
+	AdminDenied     Counter   // reason (unauthenticated|forbidden|rate_limited|ip_not_allowed) - admin plane refusals
 	MessageGate     Counter   // rule, result (allow|deny|error|timeout|skipped) - the send policy gate (before_send hook and /v1/messages)
 	AuthEvents      Counter   // kind (sms_send|login|refresh), result - fed by the identity module
 }
@@ -258,6 +259,7 @@ func NewPlatform(r *Registry) *Platform {
 		IMWebhookReject: r.Counter("vg_im_webhook_rejected_total", "IM callbacks rejected before reaching policy (bad secret, source, shape).", "reason"),
 		OutboxEvents:    r.Counter("vg_outbox_events_total", "Outbox events handled by the worker, by topic and result.", "topic", "result"),
 		DenyDegraded:    r.Counter("vg_auth_denylist_degraded_total", "Authenticated requests served while the Redis deny-list could not be consulted."),
+		AdminDenied:     r.Counter("vg_admin_denied_total", "Admin-plane requests refused, by reason (a burst of unauthenticated/forbidden is a probing signal).", "reason"),
 		MessageGate:     r.Counter("vg_message_gate_total", "Send-policy gate evaluations by rule and result (error and timeout on a restricted rule deny the send).", "rule", "result"),
 		AuthEvents:      r.Counter("vg_auth_events_total", "Authentication events by kind and result (rate_limited, locked, reuse are risk signals).", "kind", "result"),
 		OutboxLag:       r.Gauge("vg_outbox_pending", "Pending outbox rows (placeholder until Story 1.4)."),
@@ -275,6 +277,7 @@ func NewPlatform(r *Registry) *Platform {
 	p.OutboxEvents.Touch("none", "done")
 	p.AuthEvents.Touch("login", "ok")
 	p.MessageGate.Touch("accounts", "allow")
+	p.AdminDenied.Touch("unauthenticated")
 	p.DenyDegraded.Touch()
 	return p
 }

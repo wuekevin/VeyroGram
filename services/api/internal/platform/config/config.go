@@ -59,6 +59,11 @@ type Config struct {
 	RedisPassword      string
 	MessageRateLimit   int      // messages one account may send per window before the gate answers 133 (0 disables); VG_MESSAGE_RATE_LIMIT, default 30
 	MessageRateWindow  int      // window in seconds; VG_MESSAGE_RATE_WINDOW_SECONDS, default 10
+	ManagerEnabled     bool     // admin plane (Story 1.19): a separate listener serving /v1/manager/*; VG_MANAGER_ENABLED
+	ManagerAddr        string   // VG_MANAGER_ADDR, default 127.0.0.1:9103; Nginx publishes it on its own hostname
+	ManagerAllow       []string // VG_MANAGER_ALLOW: optional CIDR/IP allowlist for the admin plane (empty = any address that can reach the listener)
+	ManagerPublicRate  int      // VG_MANAGER_PUBLIC_RATE: login/second-factor requests per minute per address (default 20)
+	AdminTOTPKey       string   // VG_ADMIN_TOTP_KEY: encrypts admins' TOTP secrets at rest (>= 32 chars)
 	IMTokenKey         string   // HMAC key deriving WuKongIM connection tokens
 	TrustedProxies     []string // CIDRs/IPs whose X-Forwarded-For is honoured; empty trusts nobody (AD-16)
 }
@@ -109,6 +114,9 @@ func Load(getenv func(string) string) (Config, []Violation) {
 		RedisAddr:          getenv("VG_REDIS_ADDR"),
 		RedisPassword:      getenv("VG_REDIS_PASSWORD"),
 		IMTokenKey:         getenv("VG_IM_TOKEN_KEY"),
+		ManagerAddr:        orDefault(getenv("VG_MANAGER_ADDR"), "127.0.0.1:9103"),
+		ManagerAllow:       splitList(getenv("VG_MANAGER_ALLOW")),
+		AdminTOTPKey:       getenv("VG_ADMIN_TOTP_KEY"),
 		TrustedProxies:     splitList(getenv("VG_TRUSTED_PROXIES")),
 		CORSAllowedOrigins: splitList(getenv("VG_CORS_ALLOWED_ORIGINS")),
 	}
@@ -128,12 +136,12 @@ func Load(getenv func(string) string) (Config, []Violation) {
 	default:
 		vs = append(vs, Violation{"VG_DEBUG", "must be true or false"})
 	}
-	c.MessageRateLimit, c.MessageRateWindow = 30, 10
+	c.MessageRateLimit, c.MessageRateWindow, c.ManagerPublicRate = 30, 10, 20
 	for _, e := range []struct {
 		name string
 		dst  *int
 		min  int
-	}{{"VG_MESSAGE_RATE_LIMIT", &c.MessageRateLimit, 0}, {"VG_MESSAGE_RATE_WINDOW_SECONDS", &c.MessageRateWindow, 1}} {
+	}{{"VG_MESSAGE_RATE_LIMIT", &c.MessageRateLimit, 0}, {"VG_MESSAGE_RATE_WINDOW_SECONDS", &c.MessageRateWindow, 1}, {"VG_MANAGER_PUBLIC_RATE", &c.ManagerPublicRate, 1}} {
 		if v := strings.TrimSpace(getenv(e.name)); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil || n < e.min || n > 100000 {
@@ -142,6 +150,13 @@ func Load(getenv func(string) string) (Config, []Violation) {
 				*e.dst = n
 			}
 		}
+	}
+	switch strings.ToLower(strings.TrimSpace(getenv("VG_MANAGER_ENABLED"))) {
+	case "", "0", "false":
+	case "1", "true":
+		c.ManagerEnabled = true
+	default:
+		vs = append(vs, Violation{"VG_MANAGER_ENABLED", "must be true or false"})
 	}
 	switch strings.ToLower(strings.TrimSpace(getenv("VG_AUTH_SMS_LOGIN"))) {
 	case "", "0", "false":
@@ -172,6 +187,25 @@ func (c Config) Validate() []Violation {
 	}
 	if _, err := splitHostPort(c.IMWebhookAddr); err != nil {
 		add("VG_IM_WEBHOOK_ADDR", err.Error())
+	}
+	if c.ManagerEnabled {
+		if _, err := splitHostPort(c.ManagerAddr); err != nil {
+			add("VG_MANAGER_ADDR", err.Error())
+		} else if c.Strict() && !isInternalHost(c.ManagerAddr) {
+			add("VG_MANAGER_ADDR", "the admin listener must bind loopback or a private address; publish it through Nginx on its own hostname (AD-24)")
+		}
+		if c.MySQLDSN == "" {
+			add("VG_MANAGER_ENABLED", "the admin plane needs VG_MYSQL_DSN")
+		}
+		if k := c.AdminTOTPKey; len(k) < 32 || weakValues[strings.ToLower(k)] {
+			add("VG_ADMIN_TOTP_KEY", "must be set to at least 32 random characters when the admin plane is enabled")
+		}
+		if _, err := clientip.ParseTrusted(c.ManagerAllow); err != nil {
+			add("VG_MANAGER_ALLOW", err.Error())
+		}
+		if c.ManagerAddr == c.HTTPAddr || c.ManagerAddr == c.InternalAddr || c.ManagerAddr == c.IMWebhookAddr {
+			add("VG_MANAGER_ADDR", "the admin plane must have its own listener, not share an address with another one")
+		}
 	}
 	if u, err := url.Parse(c.IMAPIURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		add("VG_IM_API_URL", "must be an absolute http(s) URL")

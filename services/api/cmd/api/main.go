@@ -42,7 +42,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		switch args[0] {
 		case "migrate":
 			return runMigrate(args[1:], getenv, stderr)
-		case "worker", "audit", "outbox", "db", "sync":
+		case "worker", "audit", "outbox", "db", "sync", "admin":
 			return runOps(args, getenv, stderr)
 		}
 	}
@@ -92,6 +92,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 	publicMux.HandleFunc("/", httpx.NotFound)
 	var handler http.Handler = publicMux
 	var msgMux, convMux, contactMuxH *http.ServeMux
+	var managerH http.Handler // admin plane (own listener); nil unless VG_MANAGER_ENABLED
 	var notify func(context.Context, []imwebhook.Notified) error
 	var gate *msgapp.Gate      // nil without MySQL: the before_send hook then denies every send (fail-closed)
 	var authMux *http.ServeMux // /v1/auth/* answers carry credentials, so it is never run through the idempotency response cache
@@ -111,6 +112,14 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 				pm.OutboxLag.Set(float64(n))
 			}
 		})
+		if cfg.ManagerEnabled {
+			mh, err := managerHandler(cfg, pool, pm, log)
+			if err != nil {
+				fmt.Fprintln(stderr, "admin plane:", err)
+				return exitConfig
+			}
+			managerH = mh
+		}
 		handler = idempotency.Middleware(&idempotency.Store{DB: pool}, nil, nil)(handler)
 		if cfg.AuthSMSLogin {
 			m, auth, err := identityMux(cfg, pool, pm, log, im)
@@ -156,6 +165,9 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 	internal := &http.Server{Addr: cfg.InternalAddr, Handler: httpx.RequestID(imux), ReadHeaderTimeout: 5 * time.Second}
 
 	servers := map[string]*http.Server{"public": public, "internal": internal}
+	if managerH != nil {
+		servers["manager"] = &http.Server{Addr: cfg.ManagerAddr, Handler: httpx.RequestID(logx.Middleware(log)(managerH)), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 8 << 10}
+	}
 	if cfg.IMWebhookSecret != "" {
 		allow, err := imwebhook.ParseAllow(cfg.IMWebhookAllow)
 		if err != nil {
