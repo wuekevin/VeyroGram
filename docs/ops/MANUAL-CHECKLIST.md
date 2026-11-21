@@ -218,7 +218,7 @@ VG_AUDIT_ANCHOR_TOKEN=<写令牌>
 
 | 事项 | 需要什么 | 你来做的动作 |
 |---|---|---|
-| Redis 7 集成测试 | 本机 brew 只有 6.2/8.x，无 7.x，也没有 Docker | 不需要你做：需要 Redis 的 Story（如 1.13 令牌黑名单）开始时，我会在本机用源码编译 Redis 7.x 来测；生产 Linux 机上请按 C1 装 7.x 并核对版本 |
+| Redis 7 | 已在本机用源码编译 7.4.2 并通过 1.13 的集成测试，CI 也用 redis:7.4 | 生产 Linux 机上请按 C1 装 7.x 并核对版本，设置密码、只监听回环/内网，`VG_REDIS_ADDR`/`VG_REDIS_PASSWORD` 写入 api.env；建议开启 AOF 或接受“重启后拒绝列表清空，吊销退化为令牌 TTL”这一取舍 |
 | 多节点 IM 集群、踢线传播 | 3 台机器 | v1 目标单节点；做集群前需要单独立项 |
 | 真实短信：短信宝（适配器已完成，缺账号与报备） | 短信宝账号、ApiKey、已报备的签名/模板 | ① 注册短信宝并实名认证（国内短信必须），在后台“签名/模板报备”里报备签名 `【VeyroGram】`（需与我们短信开头的签名一致，否则返回 50）；国际短信要求目标国家开通。② 后台取 ApiKey（或登录密码的 MD5），在“IP 限制”里加上 API 服务器的出口 IP（否则返回 43）。③ 在 `/etc/veyrogram/api.env`（0640）设置：`VG_AUTH_SMS_LOGIN=true`、`VG_SMS_PROVIDER=smsbao`、`VG_SMSBAO_USER=<账号>`、`VG_SMSBAO_KEY=<ApiKey>`、`VG_TOKEN_KEYS=k1:<密钥>`、`VG_PHONE_HASH_KEY=<密钥>`、`VG_IM_TOKEN_KEY=<另一个密钥，不能与手机号哈希密钥相同>`、`VG_REDIS_ADDR=127.0.0.1:6379`（Redis 7.x，设密码并写入 `VG_REDIS_PASSWORD`；生产必填，用于设备撤销的访问令牌拒绝列表）、`VG_TRUSTED_PROXIES=<Nginx 地址>`。令牌密钥：`openssl rand 32 \| base64 \| tr '+/' '-_' \| tr -d =`；手机号哈希密钥：`openssl rand -hex 32`。④ **`VG_PHONE_HASH_KEY` 上线后不能改**（改了所有账号都找不到），必须备份。⑤ 用一个真手机号走一遍：收码→登录→刷新；再用一个 +852/+60 之类的国际号码验证国际通道；再故意输错 5 次，确认被锁定。⑥ 我只依据短信宝官方文档（国内 `GET /sms`、国际 `GET /wsms`，返回 `0` 为成功）并用本地模拟服务器测过，**没有用真实账号验证**，第一次真发请先小量测试；账号余额不足（41）、IP 未放行（43）会表现为“发送验证码”返回 503。 |
 | 推送（APNs/FCM） | Apple/Google 开发者账号（OQ-5） | 创建推送证书/密钥，放服务器密文目录 |
