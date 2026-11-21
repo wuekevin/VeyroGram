@@ -84,6 +84,26 @@ paths:
       responses:
         '204': { description: Logged out. }
         '401': { $ref: '#/components/responses/Error' }
+  /v1/auth/logout-all:
+    post:
+      operationId: logoutAll
+      summary: Revoke every device of the account
+      description: >
+        Revokes all live devices, including the calling one. Access tokens stop working immediately (Redis deny-list), all refresh tokens die and every IM session
+        is kicked (the worker rotates the IM token of each device class). The account must sign in again on every device. Answers 404 when no live device remains.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Everything revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked_devices]
+                properties:
+                  revoked_devices: { type: integer, minimum: 1 }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /v1/devices:
     get:
       operationId: listDevices

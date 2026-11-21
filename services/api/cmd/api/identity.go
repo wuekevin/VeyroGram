@@ -83,3 +83,31 @@ func imSyncHandler(cfg config.Config, pool *sql.DB, im *imgw.Client) outbox.Hand
 		return svc.SyncIM(ctx, p.UID, domain.DeviceClass(p.Class))
 	}
 }
+
+// imNotifier delivers account notices as IM messages from the system account to the user's own person channel.
+type imNotifier struct{ im *imgw.Client }
+
+func (n imNotifier) Notify(ctx context.Context, uid, clientMsgNo string, payload []byte) error {
+	_, err := n.im.Send(ctx, domain.SystemUID, uid, 1, clientMsgNo, payload)
+	return err
+}
+
+// deviceNoticeHandler is the outbox handler for identity.device_notice (worker process). The IM payload is the outbox payload plus a message
+// type, so clients can render it as a service notice.
+func deviceNoticeHandler(im *imgw.Client) outbox.Handler {
+	svc := &app.Service{Notify: imNotifier{im}}
+	return func(ctx context.Context, e outbox.Event) error {
+		var n map[string]any
+		if err := json.Unmarshal(e.Payload, &n); err != nil {
+			return fmt.Errorf("identity.device_notice: bad payload")
+		}
+		uid, _ := n["uid"].(string)
+		if uid == "" {
+			return fmt.Errorf("identity.device_notice: bad payload")
+		}
+		delete(n, "uid")
+		n["type"] = "account_notice"
+		msg, _ := json.Marshal(n)
+		return svc.SendNotice(ctx, e.ID, uid, msg)
+	}
+}

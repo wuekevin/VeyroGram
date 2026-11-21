@@ -733,16 +733,7 @@ func TestIMTokenAndLogoutSyncAgainstRealWuKongIM(t *testing.T) {
 	if c, _ := jpost(t, base+"/v1/auth/logout", `{}`, "Authorization", "Bearer "+access); c != 204 {
 		t.Fatalf("logout: %d", c)
 	}
-	workerAddr := freeAddr(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, bin, "worker")
-	cmd.Env = baseEnv(append(authEnv(dsn, extra...), "VG_ENV=development", "VG_WORKER_INTERNAL_ADDR="+workerAddr)...)
-	buf := &syncBuf{}
-	cmd.Stderr = buf
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { cancel(); _ = cmd.Wait() }()
+	buf := startWorker(t, bin, dsn, extra)
 	var status string
 	for deadline := time.Now().Add(8 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
 		if d.QueryRow("SELECT status FROM outbox WHERE topic='identity.im_sync'").Scan(&status) == nil && status == "done" {
@@ -755,5 +746,161 @@ func TestIMTokenAndLogoutSyncAgainstRealWuKongIM(t *testing.T) {
 	var epoch int
 	if err := d.QueryRow("SELECT epoch FROM im_epoch").Scan(&epoch); err != nil || epoch != 1 {
 		t.Fatalf("the class epoch must have been bumped once: %d %v", epoch, err)
+	}
+}
+
+// startWorker runs the real worker binary until the test ends and returns its log.
+func startWorker(t *testing.T, bin, dsn string, extra []string) *syncBuf {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, bin, "worker")
+	cmd.Env = baseEnv(append(authEnv(dsn, extra...), "VG_ENV=development", "VG_WORKER_INTERNAL_ADDR="+freeAddr(t))...)
+	buf := &syncBuf{}
+	cmd.Stderr = buf
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cancel(); _ = cmd.Wait() })
+	return buf
+}
+
+func eventually(t *testing.T, what string, within time.Duration, f func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(within); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		if f() {
+			return
+		}
+	}
+	t.Fatalf("timed out waiting for: %s", what)
+}
+
+// The 1.13 end-to-end proof with real clients: a revoked device's session is cut on the wire, a surviving same-class device reconnects with a
+// freshly fetched IM token (the old one is refused), a device of another class is told about it by a system notice, and logout-all ends everything.
+func TestRevocationKickReconnectAndNoticeOverRealWebSocket(t *testing.T) {
+	redisAddr := os.Getenv("VG_TEST_REDIS_ADDR")
+	if redisAddr == "" {
+		t.Skip("VG_TEST_REDIS_ADDR not set")
+	}
+	im := testim.Start(t, "")
+	d, dsn, bin := migrated(t)
+	extra := []string{"VG_REDIS_ADDR=" + redisAddr, "VG_IM_API_URL=" + im.APIURL, "VG_METRICS_TOKEN=metrics-token-0123456789abcdef"}
+	if r, err := denylist.Open(context.Background(), redisAddr, ""); err == nil {
+		r.C.Del(context.Background(), "vg:deny:dev:1:1", "vg:deny:dev:1:2", "vg:deny:dev:1:3")
+		r.Close()
+	}
+	p := start(t, authEnv(dsn, extra...)...)
+	wlog := startWorker(t, bin, dsn, extra)
+	base := "http://" + p.pub
+	wsURL := fmt.Sprintf("ws://127.0.0.1:%d", im.Ports["ws"])
+	phone := "+8613800138009"
+
+	login := func(device, class string) (access, refresh, devID string) {
+		t.Helper()
+		_, _ = d.Exec("UPDATE login_event SET created_at = created_at - INTERVAL 5 MINUTE") // step over the 60 s resend cooldown
+		before := len(regexp.MustCompile(`验证码 (\d{6})`).FindAllStringSubmatch(p.stderr.String(), -1))
+		jpost(t, base+"/v1/auth/sms/code", `{"phone":"`+phone+`","device_id":"`+device+`"}`)
+		var code string
+		eventually(t, "sms code in log", 3*time.Second, func() bool {
+			all := regexp.MustCompile(`验证码 (\d{6})`).FindAllStringSubmatch(p.stderr.String(), -1)
+			if len(all) > before {
+				code = all[len(all)-1][1]
+				return true
+			}
+			return false
+		})
+		c, body := jpost(t, base+"/v1/auth/login", `{"phone":"`+phone+`","code":"`+code+`","device":{"id":"`+device+`","class":"`+class+`"}}`)
+		if c != 200 {
+			t.Fatalf("login %s: %d %v", device, c, body)
+		}
+		access, _ = body["access_token"].(string)
+		refresh, _ = body["refresh_token"].(string)
+		devID = fmt.Sprint(body["device_id"])
+		return
+	}
+	imToken := func(access string) (uid, tok string, code int) {
+		c, b := get(t, base+"/v1/im/token", "Bearer "+access)
+		var o struct {
+			UID   string `json:"uid"`
+			Token string `json:"token"`
+		}
+		_ = json.Unmarshal([]byte(b), &o)
+		return o.UID, o.Token, c
+	}
+
+	accA, _, _ := login("device-aaaaaaaaaaaaaaaa", "web")
+	_, _, devB := login("device-bbbbbbbbbbbbbbbb", "web")
+	accC, _, _ := login("device-cccccccccccccccc", "app")
+
+	uid, tokA, c := imToken(accA)
+	if c != 200 || tokA == "" {
+		t.Fatalf("im token A: %d", c)
+	}
+	_, tokC, _ := imToken(accC)
+
+	wsA := dialWS(t, wsURL)
+	if !wsA.connect(uid, tokA, "im-a", 1) {
+		t.Fatal("web device A must be able to connect with its IM token")
+	}
+	wsC := dialWS(t, wsURL)
+	if !wsC.connect(uid, tokC, "im-c", 0) {
+		t.Fatal("app device C must be able to connect with its IM token")
+	}
+
+	// A revokes B (same class). The worker bumps the web epoch, kicks the web sessions and re-registers the new token.
+	req, _ := http.NewRequest("DELETE", base+"/v1/devices/"+devB, nil)
+	req.Header.Set("Authorization", "Bearer "+accA)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != 204 {
+		t.Fatalf("revoke B: %v %v", err, resp)
+	}
+	resp.Body.Close()
+
+	if !wsA.kicked(20 * time.Second) {
+		t.Fatal("A's web session must be cut by the revocation of a same-class device")
+	}
+	from, notice, ok := wsC.recvNotice(20 * time.Second)
+	if !ok {
+		var st, last string
+		_ = d.QueryRow("SELECT status, COALESCE(last_error,'') FROM outbox WHERE topic='identity.device_notice'").Scan(&st, &last)
+		t.Logf("notice outbox status=%q last_error=%q\nworker log:\n%s", st, last, wlog.String())
+	}
+	if !ok || from != "vg_system" || notice["type"] != "account_notice" || notice["kind"] != "device_revoked" || notice["device_id"] != devB {
+		t.Fatalf("the app device must receive the system notice: ok=%v from=%q notice=%v", ok, from, notice)
+	}
+
+	// The kicked client reconnects: the old token is refused, a freshly fetched one works.
+	if retry := dialWS(t, wsURL); retry.connect(uid, tokA, "im-a", 1) {
+		t.Fatal("the pre-revocation IM token must no longer be accepted")
+	}
+	_, tokA2, c := imToken(accA)
+	if c != 200 || tokA2 == tokA {
+		t.Fatalf("a new IM token is expected after the epoch bump: %d same=%v", c, tokA2 == tokA)
+	}
+	wsA2 := dialWS(t, wsURL)
+	if !wsA2.connect(uid, tokA2, "im-a", 1) {
+		t.Fatal("A must reconnect with the freshly fetched token")
+	}
+
+	// Logout everywhere: sessions of every class end, tokens are dead, nothing reconnects.
+	if c, b := jpost(t, base+"/v1/auth/logout-all", `{}`, "Authorization", "Bearer "+accA); c != 200 || b["revoked_devices"] != float64(2) {
+		t.Fatalf("logout-all: %d %v (A and C were the live devices)", c, b)
+	}
+	if !wsA2.kicked(20*time.Second) || !wsC.kicked(20*time.Second) {
+		t.Fatal("logout-all must cut every IM session")
+	}
+	for name, acc := range map[string]string{"A": accA, "C": accC} {
+		if c, _ := get(t, base+"/v1/devices", "Bearer "+acc); c != 401 {
+			t.Fatalf("access token %s must be dead after logout-all: %d", name, c)
+		}
+	}
+	if retry := dialWS(t, wsURL); retry.connect(uid, tokA2, "im-a", 1) {
+		t.Fatal("no IM token issued before logout-all may connect afterwards")
+	}
+	if retry := dialWS(t, wsURL); retry.connect(uid, tokC, "im-c", 0) {
+		t.Fatal("the app device's IM token must be dead too")
+	}
+	var live int
+	if err := d.QueryRow("SELECT COUNT(*) FROM device WHERE revoked_at IS NULL").Scan(&live); err != nil || live != 0 {
+		t.Fatalf("no live device may remain: %d %v", live, err)
 	}
 }

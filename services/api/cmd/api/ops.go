@@ -88,6 +88,7 @@ func runOps(args []string, getenv func(string) string, stderr *os.File) int {
 				return exitConfig
 			}
 			handlers[domain.TopicIMSync] = imSyncHandler(cfg, pool, im)
+			handlers[domain.TopicDeviceNotice] = deviceNoticeHandler(im)
 		}
 		w := &outbox.Worker{DB: pool, Handlers: handlers,
 			Log: func(msg string, kv ...any) { log.Warn(msg, kv...) },

@@ -32,6 +32,7 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/auth/refresh", h.refresh)
 	if h.Auth != nil {
 		mux.Handle("POST /v1/auth/logout", h.Auth(http.HandlerFunc(h.logout)))
+		mux.Handle("POST /v1/auth/logout-all", h.Auth(http.HandlerFunc(h.logoutAll)))
 		mux.Handle("GET /v1/devices", h.Auth(http.HandlerFunc(h.listDevices)))
 		mux.Handle("DELETE /v1/devices/{id}", h.Auth(http.HandlerFunc(h.revokeDevice)))
 		mux.Handle("GET /v1/im/token", h.Auth(http.HandlerFunc(h.imToken)))
@@ -183,6 +184,16 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /v1/auth/logout-all: revokes every device of the account (refresh tokens, access tokens, IM sessions).
+func (h *Handler) logoutAll(w http.ResponseWriter, r *http.Request) {
+	n, err := h.Svc.LogoutAll(r.Context(), h.claims(r), h.ip(r), r.Header.Get("X-Request-Id"))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"revoked_devices": n})
 }
 
 type deviceOut struct {

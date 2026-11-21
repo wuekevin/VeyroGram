@@ -34,6 +34,7 @@ type Service struct {
 	Deny    denylist.List             // optional: revoked-device deny-list (AD-9); nil = revocation relies on token expiry
 	IM      ports.IM                  // WuKongIM gateway for token sync and kicks
 	IMKey   []byte                    // HMAC key deriving IM tokens
+	Notify  ports.Notifier            // account notices to the user's devices (worker side)
 }
 
 // Tokens is the credential bundle returned by login and refresh.
@@ -385,6 +386,28 @@ func (s *Service) Logout(ctx context.Context, c token.Claims, ip, traceID string
 		return domain.ErrNotFound
 	}
 	return s.RevokeDevice(ctx, c, id, ip, traceID)
+}
+
+// LogoutAll revokes every device of the caller, the current one included. Refresh tokens, access tokens (deny-list) and IM sessions all end;
+// the user must sign in again everywhere. It answers domain.ErrNotFound only if the account has no live device (already logged out).
+func (s *Service) LogoutAll(ctx context.Context, c token.Claims, ip, traceID string) (int, error) {
+	rds, err := s.Store.RevokeAllDevices(ctx, s.tenant(), c.Subject, s.now())
+	if err != nil {
+		return 0, err
+	}
+	if len(rds) == 0 {
+		return 0, domain.ErrNotFound
+	}
+	for _, rd := range rds {
+		s.denyDevice(ctx, rd.DeviceID)
+	}
+	s.event(ctx, ports.Event{Kind: "device", Result: "logout_all", IP: ip, TraceID: traceID})
+	return len(rds), nil
+}
+
+// SendNotice is the outbox handler body for TopicDeviceNotice. eventID makes the IM message idempotent across retries.
+func (s *Service) SendNotice(ctx context.Context, eventID, uid string, notice []byte) error {
+	return s.Notify.Notify(ctx, uid, "devnotice:"+eventID, notice)
 }
 
 // IMCredentials is what a client needs to connect to WuKongIM.

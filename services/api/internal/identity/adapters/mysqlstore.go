@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 	"veyrogram/api/internal/platform/outbox"
 
@@ -229,6 +230,15 @@ func bumpAndQueue(ctx context.Context, tx *sql.Tx, tenant, userID uint64, uid st
 	return err
 }
 
+// queueNotice records, in the same transaction, the notice for the user's other devices. The ordering key matches the IM sync's so the notice
+// is sent after the kick and token re-registration.
+func queueNotice(ctx context.Context, tx *sql.Tx, tenant uint64, uid string, n map[string]any, now time.Time) error {
+	n["uid"] = uid
+	payload, _ := json.Marshal(n)
+	_, err := outbox.Enqueue(ctx, tx, now, tenant, domain.TopicDeviceNotice, "im:"+uid, payload)
+	return err
+}
+
 func (s *MySQLStore) ListDevices(ctx context.Context, tenant uint64, userUID string) ([]ports.DeviceInfo, error) {
 	rows, err := s.DB.QueryContext(ctx, "SELECT d.id, d.class, d.name, d.created_at, d.last_seen_at FROM device d JOIN `user` u ON u.id=d.user_id WHERE d.tenant_id=? AND u.uid=? AND d.revoked_at IS NULL ORDER BY d.last_seen_at DESC, d.id DESC",
 		tenant, userUID)
@@ -275,7 +285,65 @@ func (s *MySQLStore) RevokeDevice(ctx context.Context, tenant uint64, userUID st
 	if err := bumpAndQueue(ctx, tx, tenant, userID, userUID, rd.Class, now); err != nil {
 		return rd, false, err
 	}
+	if err := queueNotice(ctx, tx, tenant, userUID, map[string]any{"kind": "device_revoked", "device_id": strconv.FormatUint(deviceID, 10), "class": string(rd.Class)}, now); err != nil {
+		return rd, false, err
+	}
 	return rd, true, tx.Commit()
+}
+
+func (s *MySQLStore) RevokeAllDevices(ctx context.Context, tenant uint64, userUID string, now time.Time) ([]ports.RevokedDevice, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var userID uint64
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM `user` WHERE tenant_id=? AND uid=? FOR UPDATE", tenant, userUID).Scan(&userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT id, class FROM device WHERE tenant_id=? AND user_id=? AND revoked_at IS NULL FOR UPDATE", tenant, userID)
+	if err != nil {
+		return nil, err
+	}
+	var out []ports.RevokedDevice
+	classes := map[domain.DeviceClass]bool{}
+	for rows.Next() {
+		rd := ports.RevokedDevice{UID: userUID}
+		var class string
+		if err := rows.Scan(&rd.DeviceID, &class); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rd.Class = domain.DeviceClass(class)
+		out = append(out, rd)
+		classes[rd.Class] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	if len(out) == 0 {
+		return nil, nil
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE device SET revoked_at=? WHERE tenant_id=? AND user_id=? AND revoked_at IS NULL", now, tenant, userID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE refresh_token SET status='revoked' WHERE user_id=? AND status='active'", userID); err != nil {
+		return nil, err
+	}
+	for class := range classes {
+		if err := bumpAndQueue(ctx, tx, tenant, userID, userUID, class, now); err != nil {
+			return nil, err
+		}
+	}
+	if err := queueNotice(ctx, tx, tenant, userUID, map[string]any{"kind": "logout_all", "devices": len(out)}, now); err != nil {
+		return nil, err
+	}
+	return out, tx.Commit()
 }
 
 func (s *MySQLStore) IMCreds(ctx context.Context, tenant uint64, userUID string, deviceID uint64) (ports.IMCreds, error) {

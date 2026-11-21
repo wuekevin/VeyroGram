@@ -107,6 +107,12 @@ var (
 // TopicIMSync is the outbox topic that pushes a device class's current IM token to WuKongIM and kicks its sessions.
 const TopicIMSync = "identity.im_sync"
 
+// TopicDeviceNotice is the outbox topic that tells the user's remaining devices that a device was removed (or that every device was logged out).
+const TopicDeviceNotice = "identity.device_notice"
+
+// SystemUID is the sender of account notices in the IM. It is not a user account; clients render its messages as service notices.
+const SystemUID = "vg_system"
+
 // IMFlag maps a device class to WuKongIM's device flag (app=0, web=1, pc=2).
 func (c DeviceClass) IMFlag() uint8 {
 	switch c {

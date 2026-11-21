@@ -86,11 +86,19 @@ type IM interface {
 	DeviceQuit(ctx context.Context, uid string, deviceFlag uint8) error
 }
 
+// Notifier delivers an account notice to every device of uid, through the IM (stored, so offline devices get it on their next sync).
+// clientMsgNo makes redelivery idempotent.
+type Notifier interface {
+	Notify(ctx context.Context, uid, clientMsgNo string, payload []byte) error
+}
+
 type Store interface {
 	ListDevices(ctx context.Context, tenant uint64, userUID string) ([]DeviceInfo, error)
 	// RevokeDevice revokes a device owned by userUID: marks it, kills its refresh tokens, bumps the IM epoch of its class and queues
 	// the IM sync, all in one transaction. found=false when the device does not exist or belongs to someone else.
 	RevokeDevice(ctx context.Context, tenant uint64, userUID string, deviceID uint64, now time.Time) (rd RevokedDevice, found bool, err error)
+	// RevokeAllDevices does RevokeDevice for every live device of the user in one transaction (logout everywhere).
+	RevokeAllDevices(ctx context.Context, tenant uint64, userUID string, now time.Time) ([]RevokedDevice, error)
 	IMCreds(ctx context.Context, tenant uint64, userUID string, deviceID uint64) (IMCreds, error)
 	ClassEpoch(ctx context.Context, tenant uint64, userUID string, class domain.DeviceClass) (uint64, error)
 	CountEvents(ctx context.Context, kind, result string, d Dim, val string, since time.Time) (int, error)
