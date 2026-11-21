@@ -10,6 +10,7 @@ step "go test -race (incl. AD-1 import-direction check)" bash -c 'cd services/ap
 step "infra policy lint"                python3 -I tools/lint_infra.py
 step "infra lint unit tests"            python3 -I tests/ops/test_lint_infra.py
 step "OpenAPI diff gate (tests)"        python3 -I tests/ops/test_openapi_diff.py
+step "OpenAPI specs parse (every file, including new ones the diff does not read)" python3 -I -c "import sys,glob,yaml; [yaml.safe_load(open(f)) for f in sorted(glob.glob('packages/contracts/openapi/*.yaml'))]; print('ok')"
 step "OpenAPI diff vs base ref"         python3 -I tools/openapi_diff.py --dir packages/contracts/openapi --base-ref "${VG_BASE_REF:-origin/main}"
 step "deploy/rollback rehearsal"        bash tests/ops/test_deploy.sh
 step "nginx whitelist (real nginx)"     bash tests/ops/test_nginx.sh
