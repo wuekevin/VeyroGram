@@ -202,3 +202,17 @@ func TestMessageRateLimitSettings(t *testing.T) {
 		t.Errorf("non-numeric must be rejected")
 	}
 }
+
+func TestIMClusterPeerURLsAreValidated(t *testing.T) {
+	m := good()
+	m["VG_IM_API_PEER_URLS"] = "http://127.0.0.1:5002, http://10.0.0.5:5001"
+	if c, vs := Load(env(m)); len(vs) != 0 || len(c.IMAPIPeerURLs) != 2 {
+		t.Fatalf("private peers are accepted: %v %+v", vs, c.IMAPIPeerURLs)
+	}
+	for _, bad := range []string{"http://8.8.8.8:5001", "not a url", "ftp://127.0.0.1:1"} {
+		m["VG_IM_API_PEER_URLS"] = bad
+		if _, vs := Load(env(m)); !strings.Contains(keys(vs), "VG_IM_API_PEER_URLS") {
+			t.Errorf("%q must be rejected: %s", bad, keys(vs))
+		}
+	}
+}

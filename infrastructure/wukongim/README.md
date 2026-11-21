@@ -8,7 +8,7 @@ listeners (client TCP/WS) are client-facing, and WS should be reached through Ng
 ```
 export WK_DATA_DIR=/var/lib/veyrogram/wukongim WK_CLUSTER_ADDR=127.0.0.1:7001 WK_API_ADDR=127.0.0.1:5001 WK_MANAGER_ADDR=127.0.0.1:5301 \
        WK_GATEWAY_TCP=0.0.0.0:5100 WK_GATEWAY_WS=127.0.0.1:5200 WK_EXTERNAL_TCP=im.example.com:5100 WK_EXTERNAL_WS=wss://im.example.com/ws \
-       WK_BEFORE_SEND_URL=http://127.0.0.1:9102/im/webhook/<path-secret>   # the IM appends ?event=msg.before_send; <path-secret> = VG_IM_WEBHOOK_SECRET   # + secrets from a root-only env file, never from the shell history
+       WK_WEBHOOK_URL=http://127.0.0.1:9102/im/webhook/<path-secret> WK_BEFORE_SEND_URL=http://127.0.0.1:9102/im/webhook/<path-secret>   # the IM appends ?event=msg.before_send; <path-secret> = VG_IM_WEBHOOK_SECRET   # + secrets from a root-only env file, never from the shell history
 python3 -I tools/render_wukongim.py infrastructure/wukongim/wukongim.prod.toml.template /etc/veyrogram/wukongim.toml   # written 0600
 python3 -I tools/wukongim_config_check.py /etc/veyrogram/wukongim.toml     # deploy gate: defaults/secrets/plugin/MQTT/bind addresses
 python3 -I tools/exposure_scan.py --target <public-ip> --target <private-ip>   # run from OUTSIDE and from a same-subnet non-allowlisted host

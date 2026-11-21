@@ -17,11 +17,13 @@ const (
 	MaxConvLimit     = 100
 	DefaultRecents   = 1
 	MaxRecents       = 20
-	DefaultMsgLimit  = 50
-	MaxMsgLimit      = 200
-	DefaultStateLim  = 200
-	MaxStateLimit    = 500
-	MaxDraftRunes    = 4000
+	// MaxRecentCells bounds rows*recents per conversation page (see Service.Conversations).
+	MaxRecentCells  = 1000
+	DefaultMsgLimit = 50
+	MaxMsgLimit     = 200
+	DefaultStateLim = 200
+	MaxStateLimit   = 500
+	MaxDraftRunes   = 4000
 )
 
 var (

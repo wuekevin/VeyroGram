@@ -168,3 +168,51 @@ func TestTraceIDPropagatesToTheIM(t *testing.T) {
 		t.Fatalf("without a trace nothing is sent, got %q", rid)
 	}
 }
+
+func TestDeviceQuitFansOutToEveryClusterNodeButOtherCallsDoNot(t *testing.T) {
+	var quits, tokens [3]atomic.Int32
+	mk := func(i int, failQuit bool) *httptest.Server {
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/user/device_quit":
+				quits[i].Add(1)
+				if failQuit {
+					http.Error(w, "node down", http.StatusServiceUnavailable)
+					return
+				}
+			case "/user/token":
+				tokens[i].Add(1)
+			}
+			w.Write([]byte(`{"status":200}`))
+		}))
+		t.Cleanup(s.Close)
+		return s
+	}
+	n0, n1, n2 := mk(0, false), mk(1, false), mk(2, true)
+	c, err := imgw.New(n0.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Sleep = func(time.Duration) {}
+	c.Retries = 0
+	if err := c.AddPeers(n1.URL); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DeviceQuit(context.Background(), "u1", 1); err != nil || quits[0].Load() != 1 || quits[1].Load() != 1 {
+		t.Fatalf("every node must get the kick: %v %d %d", err, quits[0].Load(), quits[1].Load())
+	}
+	if err := c.UpdateToken(context.Background(), "u1", "t", 1, 1); err != nil || tokens[0].Load() != 1 || tokens[1].Load() != 0 {
+		t.Fatalf("tokens are cluster-wide state: only the primary is called: %v %d %d", err, tokens[0].Load(), tokens[1].Load())
+	}
+	// one node failing makes the whole call fail (the worker retries), while the healthy nodes were still kicked
+	if err := c.AddPeers(n2.URL); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DeviceQuit(context.Background(), "u1", 1); err == nil || quits[2].Load() < 1 || quits[0].Load() != 2 {
+		t.Fatalf("a failing node must fail the call after the others were kicked: %v %d", err, quits[2].Load())
+	}
+	// peers are validated like the primary: never a public address
+	if err := c.AddPeers("http://8.8.8.8:5001"); !errors.Is(err, imgw.ErrNotPrivate) {
+		t.Fatalf("public peer must be refused: %v", err)
+	}
+}

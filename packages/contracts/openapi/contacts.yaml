@@ -1,0 +1,74 @@
+openapi: 3.1.0
+info:
+  title: VeyroGram Contacts API
+  version: 1.0.0
+  description: |
+    Block list (Story 1.15 follow-up, ARCHITECTURE AD-21). Mounted with the auth routes (flag auth.sms_login).
+    Once A blocks B, B cannot send to A: the send gate answers reason 130 over the IM and 404 recipient_unavailable on the messages API, the same answer as
+    for a missing account, so a block is not revealed to the blocked person. A can still write to B. Unblocking restores delivery immediately; nothing is
+    deleted. At most 1000 accounts can be blocked.
+servers:
+  - url: /
+paths:
+  /v1/blocks:
+    get:
+      operationId: listBlocks
+      summary: The caller's block list, newest first
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: The list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [uid, created_at]
+                      properties:
+                        uid: { type: string }
+                        created_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/blocks/{uid}:
+    parameters:
+      - { name: uid, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,40}$' } }
+    put:
+      operationId: blockUser
+      summary: Block an account (idempotent)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Blocked (or already blocked). }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: unblockUser
+      summary: Unblock an account (idempotent)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Not blocked any more. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  schemas:
+    Error:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code: { type: string, description: 'invalid_request, invalid_token, not_found, block_list_full, internal' }
+        message: { type: string }
+        trace_id: { type: string }
+        details: { type: array, items: { type: string } }
+  responses:
+    Error:
+      description: Error envelope.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

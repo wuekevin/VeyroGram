@@ -38,6 +38,7 @@ type Config struct {
 	CORSAllowedOrigins []string // exact origins; "*" is rejected outside development/test
 	MetricsToken       string   // bearer token for /metrics on the internal listener; empty disables /metrics
 	IMAPIURL           string   // WuKongIM API base URL; loopback/private only (AD-2)
+	IMAPIPeerURLs      []string // API URLs of the other nodes of an IM cluster (VG_IM_API_PEER_URLS): device_quit must reach every node; empty for the supported single node
 	IMWebhookAddr      string   // listener for IM->business callbacks; loopback/private only, never routed by Nginx
 	AuditAnchorURL     string   // off-host store for daily audit-log head anchors (https; object storage with versioning/WORM or a log host)
 	AuditAnchorToken   string
@@ -89,6 +90,7 @@ func Load(getenv func(string) string) (Config, []Violation) {
 		TokenSigningKey:    getenv("VG_TOKEN_SIGNING_KEY"),
 		MySQLDSN:           getenv("VG_MYSQL_DSN"),
 		IMAPIURL:           orDefault(getenv("VG_IM_API_URL"), "http://127.0.0.1:5001"),
+		IMAPIPeerURLs:      splitList(getenv("VG_IM_API_PEER_URLS")),
 		IMWebhookAddr:      orDefault(getenv("VG_IM_WEBHOOK_ADDR"), "127.0.0.1:9102"),
 		IMWebhookSecret:    getenv("VG_IM_WEBHOOK_SECRET"),
 		IMWebhookSigning:   getenv("VG_IM_WEBHOOK_SIGNING_SECRET"),
@@ -242,6 +244,13 @@ func (c Config) Validate() []Violation {
 	}
 	if u, err := url.Parse(c.IMAPIURL); err == nil && !isInternalHost(u.Host) {
 		add("VG_IM_API_URL", "the IM API must be loopback or a private address, never public (AD-2)")
+	}
+	for _, pu := range c.IMAPIPeerURLs {
+		if u, err := url.Parse(pu); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			add("VG_IM_API_PEER_URLS", "every entry must be an absolute http(s) URL")
+		} else if !isInternalHost(u.Host) {
+			add("VG_IM_API_PEER_URLS", "IM node APIs must be loopback or private addresses, never public (AD-2)")
+		}
 	}
 	if !isInternalHost(c.IMWebhookAddr) {
 		add("VG_IM_WEBHOOK_ADDR", "the IM callback listener must bind loopback or a private address, never a public or wildcard one")

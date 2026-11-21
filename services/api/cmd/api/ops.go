@@ -89,6 +89,10 @@ func runOps(args []string, getenv func(string) string, stderr *os.File) int {
 				fmt.Fprintln(stderr, "VG_IM_API_URL:", err)
 				return exitConfig
 			}
+			if err := im.AddPeers(cfg.IMAPIPeerURLs...); err != nil {
+				fmt.Fprintln(stderr, "VG_IM_API_PEER_URLS:", err)
+				return exitConfig
+			}
 			handlers[domain.TopicIMSync] = imSyncHandler(cfg, pool, im)
 			handlers[domain.TopicDeviceNotice] = deviceNoticeHandler(im)
 			handlers[convadapters.TopicStateChanged] = stateNoticeHandler(im)

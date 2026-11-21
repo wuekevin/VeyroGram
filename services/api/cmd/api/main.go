@@ -77,6 +77,10 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		fmt.Fprintln(stderr, "VG_IM_API_URL:", err)
 		return exitConfig
 	}
+	if err := im.AddPeers(cfg.IMAPIPeerURLs...); err != nil {
+		fmt.Fprintln(stderr, "VG_IM_API_PEER_URLS:", err)
+		return exitConfig
+	}
 	im.Observe = func(op, result string, d time.Duration) {
 		pm.IMGWCalls.Inc(op, result)
 		pm.IMGWDuration.Observe(d.Seconds(), op)
@@ -87,7 +91,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("/", httpx.NotFound)
 	var handler http.Handler = publicMux
-	var msgMux, convMux *http.ServeMux
+	var msgMux, convMux, contactMuxH *http.ServeMux
 	var notify func(context.Context, []imwebhook.Notified) error
 	var gate *msgapp.Gate      // nil without MySQL: the before_send hook then denies every send (fail-closed)
 	var authMux *http.ServeMux // /v1/auth/* answers carry credentials, so it is never run through the idempotency response cache
@@ -119,6 +123,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 			notify = notifyHook(pool)
 			msgMux = messageMux(pool, log, im, gate, auth)
 			convMux = conversationMux(pool, log, im, auth)
+			contactMuxH = contactMux(pool, log, auth)
 		} else {
 			gate = messageGate(cfg, pool, pm, log)
 			notify = notifyHook(pool)
@@ -135,6 +140,8 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 			top.Handle("/v1/messages", msgMux)
 			top.Handle("/v1/messages/", msgMux)
 			top.Handle("/v1/sync/", convMux)
+			top.Handle("/v1/blocks", contactMuxH)
+			top.Handle("/v1/blocks/", contactMuxH)
 		}
 		top.Handle("/", rest)
 		handler = top

@@ -98,7 +98,6 @@ func TestSingleChatOverRealIMWithBeforeSendGate(t *testing.T) {
 	if !wsA.connect(uidA, tokA, "im-a", 0) || !wsB.connect(uidB, tokB, "im-b", 0) {
 		t.Fatal("both users must connect with their IM tokens")
 	}
-	text := func(s string) map[string]any { return map[string]any{"type": 1, "content": s} }
 
 	// 1. send and receive; a network-jitter resend with the same client_msg_no yields ONE message, the same ack and a single delivery.
 	n1 := ulid()

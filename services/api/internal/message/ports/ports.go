@@ -44,3 +44,9 @@ type Refs interface {
 type RateLimiter interface {
 	Allow(ctx context.Context, subject string, limit int, window time.Duration) (ok bool, retryAfter time.Duration, err error)
 }
+
+// Blocks answers the block-list question of the send gate; implemented by the composition root on top of the contact module (AD-1).
+type Blocks interface {
+	// BlockedBy reports whether blocker has blocked sender.
+	BlockedBy(ctx context.Context, blocker, sender string) (bool, error)
+}

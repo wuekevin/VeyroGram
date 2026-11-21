@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	contactadapters "veyrogram/api/internal/contact/adapters"
 	identityadapters "veyrogram/api/internal/identity/adapters"
 	"veyrogram/api/internal/message/adapters"
 	"veyrogram/api/internal/message/app"
@@ -54,7 +55,7 @@ func (s imSender) Send(ctx context.Context, from, channelID string, channelType 
 // messageGate builds the send-policy gate shared by the IM before_send hook and /v1/messages.
 func messageGate(cfg config.Config, pool *sql.DB, pm *metrics.Platform, log *slog.Logger) *app.Gate {
 	acc := accountDirectory{ids: &identityadapters.MySQLStore{DB: pool}, tenant: 1}
-	rules := app.StandardRules(acc)
+	rules := append(app.StandardRules(acc), app.BlockRule(blockDirectory{store: &contactadapters.MySQLStore{DB: pool}, tenant: 1}))
 	if cfg.RedisAddr != "" && cfg.MessageRateLimit > 0 {
 		rl := ratelimit.Open(cfg.RedisAddr, cfg.RedisPassword)
 		// after the cheap structural rules, before the database lookup

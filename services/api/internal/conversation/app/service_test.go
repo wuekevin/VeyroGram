@@ -127,3 +127,28 @@ func TestDraftValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestRecentsAreClampedSoThePageStaysUnderTheIMPayloadBudget(t *testing.T) {
+	var gotCount int
+	im := &countIM{count: &gotCount}
+	s := &Service{IM: im}
+	if _, err := s.Conversations(context.Background(), "u1", "", 100, 20); err != nil || gotCount != 10 {
+		t.Fatalf("100 rows x 20 recents must be clamped to 100 x 10: %d %v", gotCount, err)
+	}
+	if _, err := s.Conversations(context.Background(), "u1", "", 20, 20); err != nil || gotCount != 20 {
+		t.Fatalf("20 x 20 is within bounds: %d", gotCount)
+	}
+	if _, err := s.Conversations(context.Background(), "u1", "", 100, 1); err != nil || gotCount != 1 {
+		t.Fatalf("100 x 1: %d", gotCount)
+	}
+}
+
+type countIM struct {
+	fakeIM
+	count *int
+}
+
+func (c *countIM) Conversations(ctx context.Context, uid string, msgCount, page, pageSize int) ([]ports.Conversation, error) {
+	*c.count = msgCount
+	return nil, nil
+}

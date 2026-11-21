@@ -164,3 +164,37 @@ func TestRecordNotifiedCanonicalisesAndSkipsNonBusinessMessages(t *testing.T) {
 		t.Fatalf("both directions of one conversation share one canonical id: %+v", refs.got)
 	}
 }
+
+type fakeBlocks struct {
+	blocked map[string]bool // "blocker>sender"
+	err     error
+}
+
+func (f fakeBlocks) BlockedBy(_ context.Context, blocker, sender string) (bool, error) {
+	return f.blocked[blocker+">"+sender], f.err
+}
+
+func TestBlockRule(t *testing.T) {
+	g := &Gate{Rules: []Rule{BlockRule(fakeBlocks{blocked: map[string]bool{"bob>alice": true}})}}
+	for _, c := range []struct {
+		name string
+		s    domain.Send
+		want uint8
+	}{
+		{"blocked sender is refused like a missing recipient", msg("alice", "bob@alice", okText), domain.ReasonRecipientUnavailable},
+		{"the blocker can still write", msg("bob", "alice", okText), 0},
+		{"a third party is not affected", msg("carol", "bob", okText), 0},
+		{"writing to yourself is never a block", msg("alice", "alice", okText), 0},
+		{"system notices pass", msg(domain.SystemUID, "bob", okText), 0},
+	} {
+		v := g.Evaluate(context.Background(), c.s)
+		if c.want == 0 && !v.Allow || c.want != 0 && (v.Allow || v.Reason != c.want) {
+			t.Errorf("%s: %+v", c.name, v)
+		}
+	}
+	// the block list cannot be read: deny, never allow
+	g = &Gate{Rules: []Rule{BlockRule(fakeBlocks{err: errors.New("mysql down")})}}
+	if v := g.Evaluate(context.Background(), msg("alice", "bob", okText)); v.Allow || v.Reason != domain.ReasonUnavailable {
+		t.Fatalf("fail-closed expected: %+v", v)
+	}
+}

@@ -30,8 +30,9 @@ type ConversationsPage struct {
 }
 
 // Conversations pages the caller's conversation list, newest activity first. The uid comes from the token; the IM only ever returns that user's own
-// rows, and the system account's service-notice conversation is never listed. Paging is by page number (the IM's native scheme): a conversation that
-// becomes active while a client pages can shift one position, so clients upsert by (peer, type) and the next full sync repairs ordering.
+// rows, and the system account's service-notice conversation is never listed. Paging is by page number (the IM's native scheme). A conversation that
+// becomes active while a client pages moves to the top, which pushes the rows above it down by one: the effect is a repeated row at a page boundary, never
+// a skipped one (clients upsert by (peer, type)). Only deleting a conversation mid-paging can shift rows up and hide one until the next sync.
 func (s *Service) Conversations(ctx context.Context, uid, cursor string, limit, msgCount int) (ConversationsPage, error) {
 	page, err := domain.DecodeConvCursor(cursor)
 	if err != nil {
@@ -39,6 +40,11 @@ func (s *Service) Conversations(ctx context.Context, uid, cursor string, limit, 
 	}
 	limit = domain.Clamp(limit, domain.DefaultConvLimit, domain.MaxConvLimit)
 	msgCount = domain.Clamp(msgCount, domain.DefaultRecents, domain.MaxRecents) // the IM returns no rows at all for 0, so there is always at least 1
+	// The IM refuses a sync whose recent-message payloads exceed 32 MiB. With bodies capped at 16 KiB, keeping rows*recents <= 1000 bounds the worst case at
+	// 16 MiB, so a legitimate request can never hit that refusal.
+	if msgCount*limit > domain.MaxRecentCells {
+		msgCount = max(1, domain.MaxRecentCells/limit)
+	}
 	rows, err := s.IM.Conversations(ctx, uid, msgCount, page, limit)
 	if err != nil {
 		return ConversationsPage{}, domain.ErrIMUnavailable

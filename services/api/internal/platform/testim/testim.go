@@ -176,33 +176,115 @@ func tail(s string, n int) string {
 
 func (im *IM) start() {
 	im.t.Helper()
+	if err := im.startErr(); err != nil {
+		im.t.Fatal(err)
+	}
+}
+
+// startErr launches the process and waits until it answers /healthz. It does not touch the testing.T, so a cluster can start its nodes concurrently
+// (a three-node cluster only becomes healthy once a quorum is up).
+func (im *IM) startErr() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, im.bin, "-config", im.cfg)
 	cmd.Stdout, cmd.Stderr = im.logs, im.logs
 	cmd.Dir = filepath.Dir(im.cfg)
 	if err := cmd.Start(); err != nil {
 		cancel()
-		im.t.Fatal(err)
+		return err
 	}
 	im.cmd, im.cancel, im.done = cmd, cancel, make(chan struct{})
 	go func() { _ = cmd.Wait(); close(im.done) }()
-	deadline := time.Now().Add(60 * time.Second)
+	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		select {
 		case <-im.done:
-			im.t.Fatalf("WuKongIM exited during startup:\n%s", tail(im.logs.String(), 3000))
+			return fmt.Errorf("WuKongIM exited during startup:\n%s", tail(im.logs.String(), 3000))
 		default:
 		}
 		if resp, err := http.Get(im.APIURL + "/healthz"); err == nil {
 			ok := resp.StatusCode == 200
 			resp.Body.Close()
 			if ok {
-				return
+				return nil
 			}
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	im.t.Fatalf("WuKongIM not healthy within 60s:\n%s", tail(im.logs.String(), 3000))
+	return fmt.Errorf("WuKongIM not healthy within 90s:\n%s", tail(im.logs.String(), 3000))
+}
+
+// StartCluster launches an n-node WuKongIM cluster on loopback (replica count n, all nodes in one test process tree) with the same webhook options as
+// StartOpts. Node i serves its own API/WS ports; the returned slice is ordered by node id (1..n).
+func StartCluster(t testing.TB, n int, o Options) []*IM {
+	t.Helper()
+	bin := os.Getenv("VG_TEST_WUKONGIM_BIN")
+	if bin == "" {
+		t.Skip("VG_TEST_WUKONGIM_BIN not set: skipping WuKongIM cluster test (build it with tools/build_wukongim.sh)")
+	}
+	ex, err := findExample()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(ex)
+	cl := make([]int, n)
+	var nodes []string
+	for i := range cl {
+		cl[i] = freePort(t)
+		nodes = append(nodes, fmt.Sprintf("{ id = %d, addr = \"127.0.0.1:%d\" }", i+1, cl[i]))
+	}
+	var ims []*IM
+	for i := 0; i < n; i++ {
+		dir := t.TempDir()
+		conf := string(raw)
+		conf = setKey(t, conf, "node", "id", fmt.Sprint(i+1))
+		conf = setKey(t, conf, "node", "data_dir", fmt.Sprintf("%q", filepath.Join(dir, "data")))
+		conf = strings.ReplaceAll(conf, "127.0.0.1:7001", fmt.Sprintf("127.0.0.1:%d", cl[i]))
+		conf = setKey(t, conf, "cluster", "id", `"wukongim-test-cluster"`)
+		conf = setKey(t, conf, "cluster", "nodes", "["+strings.Join(nodes, ", ")+"]")
+		conf = setKey(t, conf, "cluster", "slot_replica_n", fmt.Sprint(n))
+		api, mg, tcp, ws := freePort(t), freePort(t), freePort(t), freePort(t)
+		conf = setKey(t, conf, "api", "listen_addr", fmt.Sprintf(`"127.0.0.1:%d"`, api))
+		conf = setKey(t, conf, "api", "external_tcp_addr", fmt.Sprintf(`"127.0.0.1:%d"`, tcp))
+		conf = setKey(t, conf, "api", "external_ws_addr", fmt.Sprintf(`"ws://127.0.0.1:%d"`, ws))
+		conf = setKey(t, conf, "manager", "listen_addr", fmt.Sprintf(`"127.0.0.1:%d"`, mg))
+		conf = setKey(t, conf, "manager", "jwt_secret", `"test-only-manager-secret-0123456789abcdef"`)
+		conf = setKey(t, conf, "cluster", "join_token", `"test-only-join-token-0123456789abcdef"`)
+		conf = setKey(t, conf, "gateway", "listeners", fmt.Sprintf(`[{ name = "tcp-wkproto", network = "tcp", address = "127.0.0.1:%d", transport = "gnet", protocol = "wkproto" }, { name = "ws-gateway", network = "websocket", address = "127.0.0.1:%d", transport = "gnet", protocol = "wsmux" }]`, tcp, ws))
+		conf = setKey(t, conf, "plugin", "enable", "false")
+		if o.NotifyURL != "" {
+			conf = setKey(t, conf, "webhook", "http_addr", fmt.Sprintf("%q", o.NotifyURL))
+			conf = setKey(t, conf, "webhook", "focus_events", `["msg.notify"]`)
+		}
+		if o.BeforeSendURL != "" {
+			conf = setKey(t, conf, "webhook.before_send", "enabled", "true")
+			conf = setKey(t, conf, "webhook.before_send", "http_addr", fmt.Sprintf("%q", o.BeforeSendURL))
+		}
+		im := &IM{Ports: map[string]int{"api": api, "manager": mg, "cluster": cl[i], "tcp": tcp, "ws": ws}, APIURL: fmt.Sprintf("http://127.0.0.1:%d", api), t: t, bin: bin, cfg: filepath.Join(dir, "wukongim.toml"), logs: &lockedBuf{}}
+		if err := os.WriteFile(im.cfg, []byte(conf), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		ims = append(ims, im)
+	}
+	t.Cleanup(func() {
+		for _, im := range ims {
+			im.Stop()
+		}
+		if t.Failed() {
+			for i, im := range ims {
+				t.Logf("WuKongIM node %d log tail:\n%s", i+1, tail(im.logs.String(), 2000))
+			}
+		}
+	})
+	errs := make(chan error, n)
+	for _, im := range ims {
+		go func() { errs <- im.startErr() }()
+	}
+	for range ims {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	return ims
 }
 
 // Stop terminates the process (SIGKILL via context) and waits for it.

@@ -88,6 +88,25 @@ func (g *Gate) Evaluate(ctx context.Context, s domain.Send) domain.Verdict {
 	return domain.Allow
 }
 
+// BlockRule refuses a message when the recipient has blocked the sender. It is a restricted rule: if the block list cannot be read the send is denied
+// (fail-closed), never waved through. The sender is told "recipient unavailable", the same answer as for a missing account, so a block is not revealed.
+func BlockRule(b ports.Blocks) Rule {
+	return Rule{Name: "block", Restricted: true, Check: func(ctx context.Context, s domain.Send) (domain.Verdict, error) {
+		peer, ok := domain.Peer(s.From, s.ChannelID)
+		if !ok || peer == s.From {
+			return domain.Allow, nil // structural problems are the channel rule's business; writing to yourself is never a block
+		}
+		blocked, err := b.BlockedBy(ctx, peer, s.From)
+		if err != nil {
+			return domain.Verdict{}, err
+		}
+		if blocked {
+			return domain.Verdict{Reason: domain.ReasonRecipientUnavailable}, nil
+		}
+		return domain.Allow, nil
+	}}
+}
+
 // RateRule limits how fast one account may send. It is an unrestricted rule: when the counter store is down the rule is skipped and counted, so a Redis
 // outage never stops messaging (the restricted rules still apply). limit <= 0 disables it.
 func RateRule(rl ports.RateLimiter, limit int, window time.Duration) Rule {

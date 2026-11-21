@@ -74,6 +74,10 @@ def check(text):
         u = s(d.get(('webhook.before_send', 'http_addr'))) or ''
         m = re.match(r'^https?://([^/:]+)', u)
         if not m or not private_host(m.group(1) + ':0'): out.append('webhook.before_send.http_addr must point at a loopback/private host')
+    wu = s(get('webhook', 'http_addr')) or ''
+    if wu:
+        m = re.match(r'^https?://([^/:]+)', wu)
+        if not m or not private_host(m.group(1) + ':0'): out.append('webhook.http_addr must point at a loopback/private host')
     return out
 
 if __name__ == '__main__':

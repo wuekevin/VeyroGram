@@ -46,7 +46,10 @@ token_auth_on = true
 listeners = [{ name = "tcp-wkproto", network = "tcp", address = "${WK_GATEWAY_TCP}", transport = "gnet", protocol = "wkproto" }, { name = "ws-gateway", network = "websocket", address = "${WK_GATEWAY_WS}", transport = "gnet", protocol = "wsmux" }]
 
 [webhook]
-http_addr = ""
+# Asynchronous notifications go to the same loopback listener as before_send (VG_IM_WEBHOOK_ADDR). Only msg.notify is requested: the business service
+# records committed messages in message_ref from it (Story 1.15). WK_WEBHOOK_URL = http://127.0.0.1:9102/im/webhook/<path-secret> (the IM appends ?event=...).
+http_addr = "${WK_WEBHOOK_URL}"
+focus_events = ["msg.notify"]
 # HMAC-SHA256 signing of every webhook (needs the VeyroGram-patched build, patches/wukongim/0001); must equal VG_IM_WEBHOOK_SIGNING_SECRET
 signing_secret = "${WK_WEBHOOK_SIGNING_SECRET}"
 

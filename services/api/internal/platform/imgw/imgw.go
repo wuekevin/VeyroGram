@@ -30,6 +30,7 @@ type Client struct {
 	Observe  Observer
 	Sleep    func(time.Duration) // test hook
 	AllowAny bool                // tests only: skip the private-network check
+	peers    []*Client           // the other nodes of an IM cluster (see AddPeers)
 }
 
 // ErrNotPrivate is returned when the IM API URL points at a public host.
@@ -54,6 +55,22 @@ func New(baseURL string) (*Client, error) {
 		return nil, ErrNotPrivate
 	}
 	return &Client{base: u, HTTP: &http.Client{Timeout: 5 * time.Second}}, nil
+}
+
+// AddPeers registers the API URLs of the other nodes of an IM cluster. A connection lives on the node that accepted it and /user/device_quit only closes
+// connections owned by the node that receives the call (verified against a real three-node cluster: TestClusterDeviceQuitReachesASessionOwnedByAnotherNode),
+// so DeviceQuit is sent to every node. Everything else (tokens, sends, sync) is cluster-wide state and goes to the primary URL only.
+func (c *Client) AddPeers(urls ...string) error {
+	for _, u := range urls {
+		p, err := New(u)
+		if err != nil {
+			return err
+		}
+		p.Retries, p.Backoff, p.Observe, p.Sleep, p.AllowAny = c.Retries, c.Backoff, c.Observe, c.Sleep, c.AllowAny
+		p.HTTP = c.HTTP
+		c.peers = append(c.peers, p)
+	}
+	return nil
 }
 
 func privateHost(h string) bool {
@@ -180,7 +197,14 @@ func (c *Client) DeviceQuit(ctx context.Context, uid string, deviceFlag uint8) e
 	if uid == "" {
 		return errors.New("imgw: uid is required")
 	}
-	return c.do(ctx, "device_quit", http.MethodPost, "/user/device_quit", map[string]any{"uid": uid, "device_flag": deviceFlag}, nil)
+	// Every node must acknowledge: a node that cannot be reached may still hold the session, and the caller (the outbox worker) retries until all do.
+	var errs []error
+	for _, n := range append([]*Client{c}, c.peers...) {
+		if err := n.do(ctx, "device_quit", http.MethodPost, "/user/device_quit", map[string]any{"uid": uid, "device_flag": deviceFlag}, nil); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // SetUserSendBan mutes (ban=true) or unmutes a user with the IM's native enforcement (AD-21).

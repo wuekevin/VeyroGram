@@ -133,7 +133,7 @@ systemctl enable --now veyrogram-wukongim
 ```
 `WK_WEBHOOK_SIGNING_SECRET` 必须与 `/etc/veyrogram/api.env` 里的 `VG_IM_WEBHOOK_SIGNING_SECRET` 完全相同。
 
-**发送前校验（Story 1.15）上线核对**：渲染配置时 `WK_BEFORE_SEND_URL` 必须是 `http://127.0.0.1:9102/im/webhook/<path-secret>`（`<path-secret>` 与 api.env 的 `VG_IM_WEBHOOK_SECRET` 相同，至少 32 位；IM 会自己追加 `?event=msg.before_send`），模板里 `on_timeout`/`on_error` 保持 `deny`，IM 超时 500 ms 大于网关预算 400 ms。上线后用两个测试账号各发一条消息（应成功），再对不存在的 uid 发一条（应被拒绝，原因码 130），并在监控里确认 `vg_message_gate_total` 在增长；`VeyroGramSendGateFailClosed` 告警出现说明网关在拒绝发送，先查 MySQL。生产压测下 before_send 的 P95（目标 ≤ 50 ms，仍是假设）需要你在真实机器上用压测确认。
+**发送前校验（Story 1.15）上线核对**：渲染配置时 `WK_BEFORE_SEND_URL` 与 `WK_WEBHOOK_URL`（异步 `msg.notify`，用于记录消息引用）都必须是 `http://127.0.0.1:9102/im/webhook/<path-secret>`（`<path-secret>` 与 api.env 的 `VG_IM_WEBHOOK_SECRET` 相同，至少 32 位；IM 会自己追加 `?event=msg.before_send`），模板里 `on_timeout`/`on_error` 保持 `deny`，IM 超时 500 ms 大于网关预算 400 ms。上线后用两个测试账号各发一条消息（应成功），再对不存在的 uid 发一条（应被拒绝，原因码 130），并在监控里确认 `vg_message_gate_total` 在增长；`VeyroGramSendGateFailClosed` 告警出现说明网关在拒绝发送，先查 MySQL。生产压测下 before_send 的 P95（目标 ≤ 50 ms，仍是假设）需要你在真实机器上用压测确认。
 
 ### C6. 防火墙（默认拒绝入站）与暴露面扫描（Story 1.7 的预发门禁）
 ```
@@ -223,7 +223,7 @@ VG_AUDIT_ANCHOR_TOKEN=<写令牌>
 | 事项 | 需要什么 | 你来做的动作 |
 |---|---|---|
 | Redis 7 | 已在本机用源码编译 7.4.2 并通过 1.13 的集成测试，CI 也用 redis:7.4 | 生产 Linux 机上请按 C1 装 7.x 并核对版本，设置密码、只监听回环/内网，`VG_REDIS_ADDR`/`VG_REDIS_PASSWORD` 写入 api.env；建议开启 AOF 或接受“重启后拒绝列表清空，吊销退化为令牌 TTL”这一取舍 |
-| 多节点 IM 集群、踢线传播 | 3 台机器 | v1 目标单节点；做集群前需要单独立项 |
+| 多节点 IM 集群、踢线传播 | 3 台机器（仅当你决定做集群） | 已在本机用真实三节点 WuKongIM 集群验证：令牌是全集群有效的，但 `device_quit` 只踢发到的那个节点上的连接；因此网关支持把踢线发给每个节点（`VG_IM_API_PEER_URLS`，逗号分隔其他节点的 API 地址），任一节点不可达则失败并由 worker 重试。v1 仍以单节点为目标；做集群前需要单独立项并在真实多机网络上重做这一项验证（本机回环不代表跨机延迟与分区） |
 | 真实短信：短信宝（适配器已完成，缺账号与报备） | 短信宝账号、ApiKey、已报备的签名/模板 | ① 注册短信宝并实名认证（国内短信必须），在后台“签名/模板报备”里报备签名 `【VeyroGram】`（需与我们短信开头的签名一致，否则返回 50）；国际短信要求目标国家开通。② 后台取 ApiKey（或登录密码的 MD5），在“IP 限制”里加上 API 服务器的出口 IP（否则返回 43）。③ 在 `/etc/veyrogram/api.env`（0640）设置：`VG_AUTH_SMS_LOGIN=true`、`VG_SMS_PROVIDER=smsbao`、`VG_SMSBAO_USER=<账号>`、`VG_SMSBAO_KEY=<ApiKey>`、`VG_TOKEN_KEYS=k1:<密钥>`、`VG_PHONE_HASH_KEY=<密钥>`、`VG_IM_TOKEN_KEY=<另一个密钥，不能与手机号哈希密钥相同>`、`VG_REDIS_ADDR=127.0.0.1:6379`（Redis 7.x，设密码并写入 `VG_REDIS_PASSWORD`；生产必填，用于设备撤销的访问令牌拒绝列表）、`VG_TRUSTED_PROXIES=<Nginx 地址>`。令牌密钥：`openssl rand 32 \| base64 \| tr '+/' '-_' \| tr -d =`；手机号哈希密钥：`openssl rand -hex 32`。④ **`VG_PHONE_HASH_KEY` 上线后不能改**（改了所有账号都找不到），必须备份。⑤ 用一个真手机号走一遍：收码→登录→刷新；再用一个 +852/+60 之类的国际号码验证国际通道；再故意输错 5 次，确认被锁定。⑥ 我只依据短信宝官方文档（国内 `GET /sms`、国际 `GET /wsms`，返回 `0` 为成功）并用本地模拟服务器测过，**没有用真实账号验证**，第一次真发请先小量测试；账号余额不足（41）、IP 未放行（43）会表现为“发送验证码”返回 503。 |
 | 推送（APNs/FCM） | Apple/Google 开发者账号（OQ-5） | 创建推送证书/密钥，放服务器密文目录 |
 | 对象存储 | S3 兼容服务（OQ-9） | 建桶、开版本控制，给我访问域名与权限策略（密钥自己放服务器） |

@@ -19,7 +19,7 @@ def env(data, ports):
             'WK_EXTERNAL_WS': f'ws://127.0.0.1:{ports["ws"]}', 'WK_GATEWAY_TCP': f'127.0.0.1:{ports["tcp"]}',
             'WK_GATEWAY_WS': f'127.0.0.1:{ports["ws"]}', 'WK_JOIN_TOKEN': 'j' * 40, 'WK_MANAGER_JWT_SECRET': 'k' * 40,
             'WK_MANAGER_USER': 'vgops', 'WK_MANAGER_PASSWORD': 'p' * 24, 'WK_BENCH_TOKEN': 'b' * 40,
-            'WK_BEFORE_SEND_URL': 'http://127.0.0.1:9102/hook', 'WK_WEBHOOK_SIGNING_SECRET': 's' * 40}
+            'WK_BEFORE_SEND_URL': 'http://127.0.0.1:9102/hook', 'WK_WEBHOOK_URL': 'http://127.0.0.1:9102/hook', 'WK_WEBHOOK_SIGNING_SECRET': 's' * 40}
 
 def lan_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -56,6 +56,7 @@ class ConfigCheck(unittest.TestCase):
             'debug api': ('debug_api_enable = false', 'debug_api_enable = true'),
             'before_send fail open': ('on_error = "deny"', 'on_error = "allow"'),
             'before_send public url': ('http://127.0.0.1:9102/hook', 'http://8.8.8.8/hook'),
+            'async webhook public url': ('http_addr = "http://127.0.0.1:9102/hook"\nfocus_events', 'http_addr = "http://8.8.8.8/hook"\nfocus_events'),
             'before_send doc-range url': ('http://127.0.0.1:9102/hook', 'http://203.0.113.9/hook'),
             'api on public ip': ('listen_addr = "127.0.0.1:1001"', 'listen_addr = "8.8.8.8:1001"'),
         }
