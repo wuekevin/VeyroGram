@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	msgapp "veyrogram/api/internal/message/app"
 	"veyrogram/api/internal/platform/config"
 	"veyrogram/api/internal/platform/db"
 	"veyrogram/api/internal/platform/health"
@@ -86,6 +87,8 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("/", httpx.NotFound)
 	var handler http.Handler = publicMux
+	var msgMux *http.ServeMux
+	var gate *msgapp.Gate      // nil without MySQL: the before_send hook then denies every send (fail-closed)
 	var authMux *http.ServeMux // /v1/auth/* answers carry credentials, so it is never run through the idempotency response cache
 	if cfg.MySQLDSN != "" {
 		pool, err := db.Open(cfg.MySQLDSN)
@@ -105,12 +108,16 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		})
 		handler = idempotency.Middleware(&idempotency.Store{DB: pool}, nil, nil)(handler)
 		if cfg.AuthSMSLogin {
-			m, err := identityMux(cfg, pool, pm, log, im)
+			m, auth, err := identityMux(cfg, pool, pm, log, im)
 			if err != nil {
 				fmt.Fprintln(stderr, err)
 				return exitConfig
 			}
 			authMux = m
+			gate = messageGate(pool, pm, log)
+			msgMux = messageMux(pool, log, im, gate, auth)
+		} else {
+			gate = messageGate(pool, pm, log)
 		}
 	}
 	if authMux != nil {
@@ -120,6 +127,10 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		top.Handle("/v1/devices", authMux)
 		top.Handle("/v1/devices/", authMux)
 		top.Handle("/v1/im/", authMux)
+		if msgMux != nil {
+			top.Handle("/v1/messages", msgMux)
+			top.Handle("/v1/messages/", msgMux)
+		}
 		top.Handle("/", rest)
 		handler = top
 	}
@@ -139,7 +150,11 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 			fmt.Fprintln(stderr, "VG_IM_WEBHOOK_ALLOW:", err)
 			return exitConfig
 		}
-		hook := imwebhook.Handler(imwebhook.Config{Secret: cfg.IMWebhookSecret, SigningSecret: cfg.IMWebhookSigning, Allow: allow, OnReject: func(reason string) {
+		var handlers imwebhook.Handlers
+		if gate != nil {
+			handlers.BeforeSend = beforeSendHook(gate)
+		}
+		hook := imwebhook.Handler(imwebhook.Config{Secret: cfg.IMWebhookSecret, SigningSecret: cfg.IMWebhookSigning, Allow: allow, Handlers: handlers, OnReject: func(reason string) {
 			pm.IMWebhookReject.Inc(reason)
 			log.Warn("im webhook rejected", "reason", reason)
 		}})

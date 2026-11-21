@@ -174,16 +174,16 @@ func TestMigrateUpStatusDownAgainstRealMySQL(t *testing.T) {
 	_, dsn := testdb.NewWithDSN(t)
 	bin := build(t)
 	env := []string{"VG_ENV=development", "VG_MYSQL_DSN=" + dsn}
-	if so, se, code := runBin(t, bin, env, "migrate", "up"); code != 0 || !strings.Contains(so, "applied: [1 2 3 4]") {
+	if so, se, code := runBin(t, bin, env, "migrate", "up"); code != 0 || !strings.Contains(so, "applied: [1 2 3 4 5]") {
 		t.Fatalf("up failed: %d %q %q", code, so, se)
 	}
-	if so, _, code := runBin(t, bin, env, "migrate", "status"); code != 0 || !strings.Contains(so, "applied=[1 2 3 4] pending=[] dirty=false") {
+	if so, _, code := runBin(t, bin, env, "migrate", "status"); code != 0 || !strings.Contains(so, "applied=[1 2 3 4 5] pending=[] dirty=false") {
 		t.Fatalf("status after up: %d %q", code, so)
 	}
 	if so, _, code := runBin(t, bin, env, "migrate", "up"); code != 0 || !strings.Contains(so, "applied: []") {
 		t.Fatalf("second up must be a no-op: %d %q", code, so)
 	}
-	if so, _, code := runBin(t, bin, env, "migrate", "down"); code != 0 || !strings.Contains(so, "reverted: [4]") {
+	if so, _, code := runBin(t, bin, env, "migrate", "down"); code != 0 || !strings.Contains(so, "reverted: [5]") {
 		t.Fatalf("down failed: %d %q", code, so)
 	}
 	if _, _, code := runBin(t, bin, env, "migrate", "down", "0"); code != 2 {

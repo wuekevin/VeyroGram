@@ -381,3 +381,34 @@ func (s *MySQLStore) ClassEpoch(ctx context.Context, tenant uint64, userUID stri
 	}
 	return e, err
 }
+
+// ActiveUIDs reports which of the given uids are enabled accounts. It is the identity module's answer to other modules' "may this account take
+// part?" question (consumed through the composition root, never by reading the user table from another module).
+func (s *MySQLStore) ActiveUIDs(ctx context.Context, tenant uint64, uids []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(uids))
+	if len(uids) == 0 {
+		return out, nil
+	}
+	args := []any{tenant}
+	ph := ""
+	for i, u := range uids {
+		if i > 0 {
+			ph += ","
+		}
+		ph += "?"
+		args = append(args, u)
+	}
+	rows, err := s.DB.QueryContext(ctx, "SELECT uid FROM `user` WHERE tenant_id=? AND status='active' AND uid IN ("+ph+")", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		out[u] = true
+	}
+	return out, rows.Err()
+}

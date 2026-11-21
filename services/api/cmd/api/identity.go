@@ -25,14 +25,14 @@ import (
 )
 
 // identityMux wires the identity module (feature flag auth.sms_login) and returns a mux serving /v1/auth/*.
-func identityMux(cfg config.Config, pool *sql.DB, pm *metrics.Platform, log *slog.Logger, im *imgw.Client) (*http.ServeMux, error) {
+func identityMux(cfg config.Config, pool *sql.DB, pm *metrics.Platform, log *slog.Logger, im *imgw.Client) (*http.ServeMux, func(http.Handler) http.Handler, error) {
 	ring, err := token.ParseRing(cfg.TokenKeys)
 	if err != nil {
-		return nil, fmt.Errorf("VG_TOKEN_KEYS: %w", err)
+		return nil, nil, fmt.Errorf("VG_TOKEN_KEYS: %w", err)
 	}
 	trusted, err := clientip.ParseTrusted(cfg.TrustedProxies)
 	if err != nil {
-		return nil, fmt.Errorf("VG_TRUSTED_PROXIES: %w", err)
+		return nil, nil, fmt.Errorf("VG_TRUSTED_PROXIES: %w", err)
 	}
 	var sms ports.SMSSender
 	switch cfg.SMSProvider {
@@ -43,7 +43,7 @@ func identityMux(cfg config.Config, pool *sql.DB, pm *metrics.Platform, log *slo
 	case "log":
 		sms = adapters.LogSender{Log: log}
 	default:
-		return nil, fmt.Errorf("VG_SMS_PROVIDER: unsupported %q", cfg.SMSProvider)
+		return nil, nil, fmt.Errorf("VG_SMS_PROVIDER: unsupported %q", cfg.SMSProvider)
 	}
 	var deny denylist.List
 	if cfg.RedisAddr != "" {
@@ -69,7 +69,7 @@ func identityMux(cfg config.Config, pool *sql.DB, pm *metrics.Platform, log *slo
 	mux.HandleFunc("/v1/auth/", httpx.NotFound)
 	auth := authn.Require(authn.Config{Ring: ring, Deny: deny, OnDegraded: func() { pm.DenyDegraded.Inc() }})
 	(&identityhttp.Handler{Svc: svc, Trusted: trusted, Log: log, Auth: auth}).Mount(mux)
-	return mux, nil
+	return mux, auth, nil
 }
 
 // imSyncHandler is the outbox handler for identity.im_sync (worker process).

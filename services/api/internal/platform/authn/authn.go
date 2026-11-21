@@ -23,6 +23,11 @@ func FromContext(ctx context.Context) (token.Claims, bool) {
 	return c, ok
 }
 
+// WithClaims returns ctx carrying already-verified claims. Only for tests of handlers that sit behind Require; production code gets claims from Require.
+func WithClaims(ctx context.Context, c token.Claims) context.Context {
+	return context.WithValue(ctx, ctxKey{}, c)
+}
+
 type Config struct {
 	Ring       *token.Ring
 	Deny       denylist.List // nil = no deny-list configured: always degraded

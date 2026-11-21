@@ -50,7 +50,7 @@ development_status:
   1-12-手机号注册与登录-服务端: review
   1-13-设备-令牌与会话撤销-服务端: review
   1-14-登录与设备页客户端-四端最小实现: ready-for-dev
-  1-15-单聊消息收发-服务端与-before_send-骨架: ready-for-dev
+  1-15-单聊消息收发-服务端与-before_send-骨架: review
   1-16-离线同步与多端一致-服务端: ready-for-dev
   1-17-聊天与同步客户端-android-与-ios: ready-for-dev
   1-18-聊天与同步客户端-web-与桌面: ready-for-dev

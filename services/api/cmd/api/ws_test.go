@@ -130,3 +130,79 @@ func (c *wsClient) recvNotice(within time.Duration) (from string, payload map[st
 		}
 	}
 }
+
+type sendAck struct {
+	Reason int
+	ID     string
+	Seq    uint64
+}
+
+// send is a client SEND over the wire (the normal v1 send path: client -> IM directly, AD-21) and returns the SENDACK.
+func (c *wsClient) send(channelID, clientMsgNo string, payload map[string]any) sendAck {
+	c.t.Helper()
+	enc, _ := json.Marshal(payload)
+	id := fmt.Sprintf("s-%d", time.Now().UnixNano())
+	req, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": "send", "params": map[string]any{
+		"payload": string(enc), "client_msg_no": clientMsgNo, "channel_id": channelID, "channel_type": 1,
+		"header": map[string]any{"no_persist": false, "red_dot": true, "sync_once": false, "dup": false}}})
+	if err := c.conn.WriteMessage(websocket.TextMessage, req); err != nil {
+		c.t.Fatalf("ws send: %v", err)
+	}
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case m, ok := <-c.in:
+			if !ok {
+				c.t.Fatal("ws closed while waiting for SENDACK")
+			}
+			if string(m.ID) != `"`+id+`"` {
+				continue
+			}
+			var r struct {
+				ReasonCode int    `json:"reason_code"`
+				MessageID  string `json:"message_id"`
+				MessageSeq uint64 `json:"message_seq"`
+			}
+			if len(m.Error) != 0 { // a refused send comes back as a JSON-RPC error whose code is the reason code (ours 128-255, or the IM's native one)
+				var e struct {
+					Code int `json:"code"`
+				}
+				if json.Unmarshal(m.Error, &e) != nil || e.Code == 0 {
+					c.t.Fatalf("SENDACK error without a reason code: %s", m.Error)
+				}
+				return sendAck{Reason: e.Code}
+			}
+			if json.Unmarshal(m.Result, &r) != nil {
+				c.t.Fatalf("SENDACK undecodable: %s", m.Result)
+			}
+			return sendAck{r.ReasonCode, r.MessageID, r.MessageSeq}
+		case <-deadline:
+			c.t.Fatal("no SENDACK within 10s")
+		}
+	}
+}
+
+// received collects everything pushed as `recv` for the given duration, as (clientMsgNo -> count).
+func (c *wsClient) received(within time.Duration) map[string]int {
+	out := map[string]int{}
+	deadline := time.After(within)
+	for {
+		select {
+		case m, ok := <-c.in:
+			if !ok {
+				return out
+			}
+			if m.Method != "recv" {
+				continue
+			}
+			var p struct {
+				ClientMsgNo string `json:"clientMsgNo"`
+			}
+			if json.Unmarshal(m.Params, &p) == nil {
+				out[p.ClientMsgNo]++
+			}
+		case <-deadline:
+			return out
+		}
+	}
+}

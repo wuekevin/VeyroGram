@@ -131,6 +131,8 @@ systemctl enable --now veyrogram-wukongim
 ```
 `WK_WEBHOOK_SIGNING_SECRET` 必须与 `/etc/veyrogram/api.env` 里的 `VG_IM_WEBHOOK_SIGNING_SECRET` 完全相同。
 
+**发送前校验（Story 1.15）上线核对**：渲染配置时 `WK_BEFORE_SEND_URL` 必须是 `http://127.0.0.1:9102/im/webhook/<path-secret>`（`<path-secret>` 与 api.env 的 `VG_IM_WEBHOOK_SECRET` 相同，至少 32 位；IM 会自己追加 `?event=msg.before_send`），模板里 `on_timeout`/`on_error` 保持 `deny`，IM 超时 500 ms 大于网关预算 400 ms。上线后用两个测试账号各发一条消息（应成功），再对不存在的 uid 发一条（应被拒绝，原因码 130），并在监控里确认 `vg_message_gate_total` 在增长；`VeyroGramSendGateFailClosed` 告警出现说明网关在拒绝发送，先查 MySQL。生产压测下 before_send 的 P95（目标 ≤ 50 ms，仍是假设）需要你在真实机器上用压测确认。
+
 ### C6. 防火墙（默认拒绝入站）与暴露面扫描（Story 1.7 的预发门禁）
 ```
 ufw default deny incoming && ufw default allow outgoing

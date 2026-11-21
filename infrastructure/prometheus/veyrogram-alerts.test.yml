@@ -84,3 +84,26 @@ tests:
       - eval_time: 6m
         alertname: VeyroGramDenylistDegraded
         exp_alerts: []
+  - name: send gate fail-closed pages
+    interval: 1m
+    input_series:
+      - series: 'vg_message_gate_total{rule="accounts",result="timeout"}'
+        values: '0 0 0 5 9 14 20 20'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: VeyroGramSendGateFailClosed
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: VeyroGramSendGateFailClosed
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: "The send-policy gate could not decide (error/timeout) and is denying messages fail-closed: users see send failures. Check MySQL and the before_send latency budget" }
+  - name: healthy send gate stays silent
+    interval: 1m
+    input_series:
+      - series: 'vg_message_gate_total{rule="accounts",result="allow"}'
+        values: '0 10 40 90 150 210 300'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: VeyroGramSendGateFailClosed
+        exp_alerts: []
