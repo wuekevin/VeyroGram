@@ -399,3 +399,44 @@ func TestLastActiveOwnerCannotBeDisabled(t *testing.T) {
 		t.Fatalf("bootstrap is once-only at the store level too: %v", err)
 	}
 }
+
+// Regression: two owners disabling each other used to deadlock in MySQL now and then (error 1213 instead of ErrLastOwner). The race is repeated so a
+// lucky schedule cannot hide it; every round must end with exactly one winner, one clean ErrLastOwner, and one owner still active.
+func TestOwnerDisableRaceNeverDeadlocks(t *testing.T) {
+	d, _, _ := migrated(t)
+	st := &adminadapters.MySQLStore{DB: d}
+	ctx := context.Background()
+	now := time.Now()
+	root, err := st.Bootstrap(ctx, 1, "root-owner", "h", []byte("s"), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 40; i++ {
+		if _, err := d.Exec("UPDATE admin_user SET status='disabled' WHERE role_id=?", domain.RoleOwner); err != nil {
+			t.Fatal(err)
+		}
+		x, err := st.CreateAdmin(ctx, 1, fmt.Sprintf("x%d", i), "h", domain.RoleOwner, []byte("s"), root, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		y, err := st.CreateAdmin(ctx, 1, fmt.Sprintf("y%d", i), "h", domain.RoleOwner, []byte("s"), root, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		errs := make(chan error, 2)
+		go func() { errs <- st.DisableAdmin(ctx, 1, x, now) }()
+		go func() { errs <- st.DisableAdmin(ctx, 1, y, now) }()
+		e1, e2 := <-errs, <-errs
+		loser := e1
+		if e1 == nil {
+			loser = e2
+		}
+		if (e1 == nil) == (e2 == nil) || !errors.Is(loser, domain.ErrLastOwner) {
+			t.Fatalf("round %d: one must win and the other get ErrLastOwner, got %v / %v", i, e1, e2)
+		}
+		var active int
+		if err := d.QueryRow("SELECT COUNT(*) FROM admin_user WHERE role_id=? AND status='active'", domain.RoleOwner).Scan(&active); err != nil || active != 1 {
+			t.Fatalf("round %d: one owner must remain active: %d %v", i, active, err)
+		}
+	}
+}

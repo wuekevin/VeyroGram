@@ -117,22 +117,34 @@ func (s *MySQLStore) DisableAdmin(ctx context.Context, tenant uint64, id uint64,
 		return err
 	}
 	defer tx.Rollback()
-	var role uint8
+	// Every disable first locks ALL active owners in id order, then the target. A fixed order is what keeps two owners disabling each other at the same time
+	// from deadlocking (each holding its own row and waiting for the other's); the second transaction simply waits, then sees the first one's result.
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM admin_user WHERE tenant_id=? AND role_id=? AND status='active' ORDER BY id FOR UPDATE", tenant, domain.RoleOwner)
+	if err != nil {
+		return err
+	}
+	owners, targetIsActiveOwner := 0, false
+	for rows.Next() {
+		var oid uint64
+		if err := rows.Scan(&oid); err != nil {
+			rows.Close()
+			return err
+		}
+		owners++
+		targetIsActiveOwner = targetIsActiveOwner || oid == id
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
 	var status string
-	if err := tx.QueryRowContext(ctx, "SELECT role_id, status FROM admin_user WHERE tenant_id=? AND id=? FOR UPDATE", tenant, id).Scan(&role, &status); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT status FROM admin_user WHERE tenant_id=? AND id=? FOR UPDATE", tenant, id).Scan(&status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.ErrNotFound
 		}
 		return err
 	}
-	if role == domain.RoleOwner && status == "active" {
-		var owners int
-		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM admin_user WHERE tenant_id=? AND role_id=? AND status='active' FOR UPDATE", tenant, domain.RoleOwner).Scan(&owners); err != nil {
-			return err
-		}
-		if owners <= 1 {
-			return domain.ErrLastOwner
-		}
+	if targetIsActiveOwner && owners <= 1 {
+		return domain.ErrLastOwner
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE admin_user SET status='disabled' WHERE id=?", id); err != nil {
 		return err
