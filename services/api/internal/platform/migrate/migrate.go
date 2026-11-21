@@ -27,7 +27,14 @@ var (
 	ErrUnknownApplied = errors.New("migrate: database contains an applied version that has no migration file")
 	ErrOutOfOrder     = errors.New("migrate: a pending migration has a lower version than one already applied")
 	ErrLockTimeout    = errors.New("migrate: could not obtain the migration lock (another run in progress?)")
+	// ErrForeignSchema: the target database holds tables of another application (an upstream TangSengDaoDao deployment) and no VeyroGram
+	// migration history. VeyroGram has no compat layer and no in-place migration (ADR-0011); it deploys only into an empty database.
+	ErrForeignSchema = errors.New("migrate: the database contains an upstream TangSengDaoDao schema and no VeyroGram migration history; VeyroGram does not migrate or adopt it (ADR-0011) — deploy into a new empty database")
 )
+
+// upstreamFingerprint lists tables that only an upstream TangSengDaoDao database has (its migrator records history in gorp_migrations; the
+// others are upstream core tables). Several share a name with VeyroGram tables (user, device), so running our DDL there would corrupt it.
+var upstreamFingerprint = []string{"gorp_migrations", "app", "app_config", "friend", "group_member", "message_extra", "user_setting", "shortno"}
 
 const lockName = "veyrogram_migrate"
 
@@ -145,6 +152,10 @@ func (r *Runner) begin(ctx context.Context) (*session, error) {
 		return nil, ErrLockTimeout
 	}
 	s := &session{c: c, r: r}
+	if err := s.refuseForeignSchema(ctx); err != nil {
+		s.end()
+		return nil, err
+	}
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS schema_migration (
   version BIGINT UNSIGNED NOT NULL PRIMARY KEY, name VARCHAR(190) NOT NULL, checksum CHAR(64) NOT NULL, applied_at DATETIME(3) NOT NULL
@@ -159,6 +170,30 @@ func (r *Runner) begin(ctx context.Context) (*session, error) {
 		}
 	}
 	return s, nil
+}
+
+// refuseForeignSchema fails with ErrForeignSchema when the database has no VeyroGram migration history but has upstream tables.
+func (s *session) refuseForeignSchema(ctx context.Context) error {
+	var own int
+	if err := s.c.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='schema_migration'").Scan(&own); err != nil {
+		return err
+	}
+	if own > 0 {
+		return nil
+	}
+	ph := strings.TrimSuffix(strings.Repeat("?,", len(upstreamFingerprint)), ",")
+	args := make([]any, len(upstreamFingerprint))
+	for i, t := range upstreamFingerprint {
+		args[i] = t
+	}
+	var foreign int
+	if err := s.c.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ("+ph+")", args...).Scan(&foreign); err != nil {
+		return err
+	}
+	if foreign > 0 {
+		return ErrForeignSchema
+	}
+	return nil
 }
 
 func (s *session) end() {

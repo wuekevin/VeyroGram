@@ -1,0 +1,65 @@
+# Story 1.23: disposition of every table the pinned upstream creates (decision and meaning of each value: docs/architecture/adr/0011-upstream-compat-and-migration.md)
+# upstream pin: TangSengDaoDaoServer fc81513d34650ee39401b5197553697b8c7b4012 (docs/audit/upstream-baseline.md)
+# replaced = VeyroGram has its own, differently shaped table or service  |  im-owned = the data lives in WuKongIM, not MySQL
+# import-candidate = would need a mapping if a migration is ever approved  |  out-of-scope = feature not in this product yet
+tables:
+  app: out-of-scope
+  app_config: out-of-scope
+  app_module: out-of-scope
+  app_version: out-of-scope
+  channel_offset: replaced
+  channel_offset1: replaced
+  channel_offset2: replaced
+  channel_setting: import-candidate
+  chat_bg: out-of-scope
+  conversation_extra: replaced
+  device: replaced
+  device_flag: replaced
+  device_offset: replaced
+  event: out-of-scope
+  friend: import-candidate
+  friend_apply_record: import-candidate
+  gitee_user: out-of-scope
+  github_user: out-of-scope
+  group: import-candidate
+  group_invite: import-candidate
+  group_member: import-candidate
+  group_setting: import-candidate
+  invite_item: import-candidate
+  login_log: replaced
+  member_readed: replaced
+  message: im-owned
+  message1: im-owned
+  message2: im-owned
+  message3: im-owned
+  message4: im-owned
+  message_extra: im-owned
+  message_user_extra: im-owned
+  message_user_extra1: im-owned
+  message_user_extra2: im-owned
+  pinned_message: out-of-scope
+  prohibit_words: out-of-scope
+  reaction_users: out-of-scope
+  reminder_done: out-of-scope
+  reminders: out-of-scope
+  report: out-of-scope
+  report_category: out-of-scope
+  robot: out-of-scope
+  robot_menu: out-of-scope
+  send_history: out-of-scope
+  seq: replaced
+  shortno: import-candidate
+  signal_identities: out-of-scope
+  signal_onetime_prekeys: out-of-scope
+  user: replaced
+  user_last_offset: replaced
+  user_maillist: import-candidate
+  user_online: replaced
+  user_red_dot: out-of-scope
+  user_setting: import-candidate
+  workplace_app: out-of-scope
+  workplace_app_user_record: out-of-scope
+  workplace_banner: out-of-scope
+  workplace_category: out-of-scope
+  workplace_category_app: out-of-scope
+  workplace_user_app: out-of-scope

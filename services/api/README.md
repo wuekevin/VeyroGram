@@ -53,6 +53,9 @@ a signing key shorter than 32 bytes or a known default, wildcard CORS, debug mod
 
 A value in the environment that still contains an install marker (`@@FILL:…@@`, `@@GEN:…@@`) is a configuration error: the service does not start on a file nobody finished filling in.
 
+## Upstream compatibility (Story 1.23, ADR-0011)
+VeyroGram supports **fresh installs only**. There is no compat layer for TangSengDaoDao's legacy paths (`docs/migration/COMPAT-PATHS.md` is empty on purpose) and no migration of upstream data. `tools/check_upstream_compat.py` fails the build if a contract path collides with an upstream one or an upstream table has no written disposition.
+
 ## Develop
 ```
 make test    # go test -race (toolchain pinned to go1.26.10)

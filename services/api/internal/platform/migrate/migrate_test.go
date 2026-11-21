@@ -275,3 +275,40 @@ func TestConcurrentRunnersApplyEachMigrationOnce(t *testing.T) {
 		t.Fatalf("6 concurrent runners must apply exactly 2 migrations in total without errors, got applied=%d errors=%d", total, errs)
 	}
 }
+
+// ADR-0011: pointing VeyroGram at an upstream TangSengDaoDao database must fail before any DDL, and leave that database untouched.
+func TestRefusesUpstreamTangSengDaoDaoDatabase(t *testing.T) {
+	r := runner(t, twoTables())
+	if _, err := r.DB.Exec("CREATE TABLE `user` (id INT NOT NULL PRIMARY KEY, password VARCHAR(40) NOT NULL) " + tbl); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.DB.Exec("CREATE TABLE gorp_migrations (id VARCHAR(255) NOT NULL PRIMARY KEY, applied_at DATETIME NULL) " + tbl); err != nil {
+		t.Fatal(err)
+	}
+	for name, run := range map[string]func() error{
+		"up":     func() error { _, err := r.Up(context.Background()); return err },
+		"down":   func() error { _, err := r.Down(context.Background(), 1); return err },
+		"status": func() error { _, err := r.Status(context.Background()); return err },
+	} {
+		if err := run(); !errors.Is(err, migrate.ErrForeignSchema) {
+			t.Errorf("%s: got %v, want ErrForeignSchema", name, err)
+		}
+	}
+	if tableExists(t, r, "schema_migration") || tableExists(t, r, "a") {
+		t.Fatal("a refused run must not create any table")
+	}
+}
+
+// A database that already has VeyroGram history keeps working even if it also has a table named like an upstream one.
+func TestOwnHistoryIsNotMistakenForForeign(t *testing.T) {
+	r := runner(t, twoTables())
+	if _, err := r.Up(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.DB.Exec("CREATE TABLE friend (id INT NOT NULL PRIMARY KEY) " + tbl); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Up(context.Background()); err != nil {
+		t.Fatalf("second run on own database: %v", err)
+	}
+}

@@ -58,7 +58,7 @@ development_status:
   1-20-管理面最小界面-登录-首页-审计: ready-for-dev
   1-21-安装向导与运维套件: review
   1-22-备份实现-mysql-pitr-im-存储-对象存储: review
-  1-23-上游兼容与数据迁移决策: ready-for-dev
+  1-23-上游兼容与数据迁移决策: review
   1-24-测试与安全门禁基座: ready-for-dev
   epic-1-retrospective: optional
 
