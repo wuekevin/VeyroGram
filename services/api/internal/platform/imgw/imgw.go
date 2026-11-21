@@ -246,3 +246,66 @@ func traceparent(id string) string {
 	}
 	return "00-" + id + "-0000000000000001-01"
 }
+
+// SyncedMessage is one message as the IM returns it from its sync endpoints. Payload is the raw message body (base64 on the wire, decoded here).
+type SyncedMessage struct {
+	MessageID   int64  `json:"message_id"`
+	MessageSeq  uint64 `json:"message_seq"`
+	ClientMsgNo string `json:"client_msg_no"`
+	FromUID     string `json:"from_uid"`
+	ChannelID   string `json:"channel_id"`
+	ChannelType uint8  `json:"channel_type"`
+	Timestamp   int32  `json:"timestamp"`
+	Payload     []byte `json:"payload"`
+}
+
+// SyncedConversation is one row of the IM's conversation list for a user. Unread and ReadToMessageSeq are the IM's per-user truth, so every device of
+// the user sees the same numbers.
+type SyncedConversation struct {
+	ChannelID        string          `json:"channel_id"`
+	ChannelType      uint8           `json:"channel_type"`
+	Unread           uint64          `json:"unread"`
+	Timestamp        int64           `json:"timestamp"`
+	LastMessageSeq   uint64          `json:"last_msg_seq"`
+	LastClientMsgNo  string          `json:"last_client_msg_no"`
+	ReadToMessageSeq uint64          `json:"readed_to_msg_seq"`
+	Recents          []SyncedMessage `json:"recents"`
+}
+
+// ConversationSync lists the user's conversations, most recently active first, one-based page of pageSize (the IM caps it at 500), each with up to
+// msgCount recent messages.
+func (c *Client) ConversationSync(ctx context.Context, uid string, msgCount, page, pageSize int) ([]SyncedConversation, error) {
+	var out []SyncedConversation
+	err := c.do(ctx, "conversation_sync", http.MethodPost, "/conversation/sync", map[string]any{
+		"uid": uid, "msg_count": msgCount, "page": page, "page_size": pageSize}, &out)
+	return out, err
+}
+
+// ChannelMessages is one page of a channel's history.
+type ChannelMessages struct {
+	More     bool
+	Messages []SyncedMessage
+}
+
+// ChannelMessageSync reads a page of the conversation between loginUID and the person channel peer. up=true pulls messages at or after startSeq in
+// ascending order; up=false pulls older messages at or before startSeq. For person channels the IM resolves the pair from loginUID and the peer uid,
+// so the caller can only ever read their own conversations.
+func (c *Client) ChannelMessageSync(ctx context.Context, loginUID, peer string, startSeq uint64, limit int, up bool) (ChannelMessages, error) {
+	mode := 0
+	if up {
+		mode = 1
+	}
+	var r struct {
+		More     int             `json:"more"`
+		Messages []SyncedMessage `json:"messages"`
+	}
+	err := c.do(ctx, "channel_message_sync", http.MethodPost, "/channel/messagesync", map[string]any{
+		"login_uid": loginUID, "channel_id": peer, "channel_type": 1, "start_message_seq": startSeq, "limit": limit, "pull_mode": mode}, &r)
+	return ChannelMessages{More: r.More == 1, Messages: r.Messages}, err
+}
+
+// ClearUnread marks the user's conversation as read up to its latest message.
+func (c *Client) ClearUnread(ctx context.Context, uid, channelID string, channelType uint8) error {
+	return c.do(ctx, "clear_unread", http.MethodPost, "/conversations/clearUnread", map[string]any{
+		"uid": uid, "channel_id": channelID, "channel_type": channelType}, nil)
+}

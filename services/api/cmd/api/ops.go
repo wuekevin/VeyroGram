@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	convadapters "veyrogram/api/internal/conversation/adapters"
 	"veyrogram/api/internal/identity/domain"
 	"veyrogram/api/internal/platform/audit"
 	"veyrogram/api/internal/platform/config"
@@ -89,6 +90,7 @@ func runOps(args []string, getenv func(string) string, stderr *os.File) int {
 			}
 			handlers[domain.TopicIMSync] = imSyncHandler(cfg, pool, im)
 			handlers[domain.TopicDeviceNotice] = deviceNoticeHandler(im)
+			handlers[convadapters.TopicStateChanged] = stateNoticeHandler(im)
 		}
 		w := &outbox.Worker{DB: pool, Handlers: handlers,
 			Log: func(msg string, kv ...any) { log.Warn(msg, kv...) },

@@ -1,0 +1,212 @@
+openapi: 3.1.0
+info:
+  title: VeyroGram Sync API
+  version: 1.0.0
+  description: |
+    How a device catches up after being offline or after a first sign-in (Story 1.16, ARCHITECTURE AD-4/AD-5). Mounted with the auth routes (flag `auth.sms_login`).
+    The user is always taken from the access token; there is no uid parameter anywhere, so a caller can only ever read or change their own state.
+    Live delivery stays on the IM connection; these routes only fill the gaps.
+
+    **Catch-up recipe**: (1) page `GET /v1/sync/conversations` until `has_more` is false; (2) for each conversation page `GET /v1/sync/messages` from the last
+    `message_seq` you hold (0 if none) until `has_more` is false; (3) `GET /v1/sync/state?since=<last next_since>` for drafts and settings.
+    Messages arrive oldest first, each exactly once. Unread counts and read marks are kept per user by the IM, so every device shows the same numbers.
+
+    Cursor versioning: the conversation cursor is opaque and versioned (`c1.`); a cursor the server does not understand answers 400 and the client restarts
+    from the first page. Conversation order is "most recently active first"; if a conversation becomes active while a client pages, one row can shift by a
+    position, so clients upsert by (peer, channel_type).
+    Only one-to-one conversations are listed until groups ship; the system account's notice conversation is never listed.
+servers:
+  - url: /
+paths:
+  /v1/sync/conversations:
+    get:
+      operationId: syncConversations
+      summary: Page the caller's conversation list
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: cursor, in: query, schema: { type: string }, description: Opaque; omit for the first page. }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: msg_count, in: query, schema: { type: integer, minimum: 1, maximum: 20, default: 1 }, description: Recent messages per conversation (oldest first within the row). }
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, has_more]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Conversation' } }
+                  has_more: { type: boolean }
+                  next_cursor: { type: string }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/sync/messages:
+    get:
+      operationId: syncMessages
+      summary: Messages of the conversation with `peer` after `after_seq`, oldest first
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: peer, in: query, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,40}$' } }
+        - { name: after_seq, in: query, schema: { type: integer, minimum: 0, default: 0 }, description: Exclusive. Send the last `message_seq` you hold. }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: A page; repeat with `next_seq` while `has_more`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [peer, messages, next_seq, has_more]
+                properties:
+                  peer: { type: string }
+                  messages: { type: array, items: { $ref: '#/components/schemas/Message' } }
+                  next_seq: { type: integer }
+                  has_more: { type: boolean }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/sync/read:
+    post:
+      operationId: markRead
+      summary: Mark the conversation with `peer` as read (unread becomes 0 on every device)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [peer]
+              properties: { peer: { type: string } }
+      responses:
+        '204': { description: Done. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/sync/drafts:
+    put:
+      operationId: putDraft
+      summary: Store (or, with empty content, clear) the draft for a conversation
+      description: Last writer wins. The other devices are nudged through the IM with a `sync_notice` message that carries pointers only, never the draft text.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [peer, content]
+              properties:
+                peer: { type: string }
+                content: { type: string, maxLength: 4000 }
+      responses:
+        '200': { $ref: '#/components/responses/Version' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/sync/conversation-settings:
+    put:
+      operationId: putConversationSetting
+      summary: Pin / mute a conversation (synced to all devices)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [peer, pinned, muted]
+              properties:
+                peer: { type: string }
+                pinned: { type: boolean }
+                muted: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/Version' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/sync/state:
+    get:
+      operationId: syncState
+      summary: Drafts and conversation settings changed after `since`, in version order
+      description: Versions are per user, unique and gap-free, so `next_since` from the last page is a safe cursor. A cleared draft appears once with `deleted: true`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: since, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 200 } }
+      responses:
+        '200':
+          description: Changes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_since, has_more]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/StateItem' } }
+                  next_since: { type: integer }
+                  has_more: { type: boolean }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  schemas:
+    Message:
+      type: object
+      required: [message_id, message_seq, client_msg_no, from_uid, timestamp, payload]
+      properties:
+        message_id: { type: string }
+        message_seq: { type: integer, minimum: 1 }
+        client_msg_no: { type: string }
+        from_uid: { type: string }
+        timestamp: { type: integer, description: Unix seconds. }
+        payload: { type: [object, 'null'], description: The content-type envelope that was sent; null if the stored body is not JSON. }
+    Conversation:
+      type: object
+      required: [peer, channel_type, unread, timestamp, last_msg_seq, read_to_seq, recents]
+      properties:
+        peer: { type: string }
+        channel_type: { type: integer, const: 1 }
+        unread: { type: integer, minimum: 0 }
+        timestamp: { type: integer }
+        last_msg_seq: { type: integer }
+        read_to_seq: { type: integer }
+        recents: { type: array, items: { $ref: '#/components/schemas/Message' } }
+    StateItem:
+      type: object
+      required: [kind, version, peer, channel_type]
+      properties:
+        kind: { type: string, enum: [draft, setting] }
+        version: { type: integer }
+        peer: { type: string }
+        channel_type: { type: integer }
+        content: { type: string }
+        deleted: { type: boolean }
+        pinned: { type: boolean }
+        muted: { type: boolean }
+    Error:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code: { type: string, description: 'invalid_request, invalid_token, not_found, im_unavailable, internal' }
+        message: { type: string }
+        trace_id: { type: string }
+        details: { type: array, items: { type: string } }
+  responses:
+    Error:
+      description: Error envelope.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Version:
+      description: Stored; `version` orders it against the user's other changes.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [version]
+            properties: { version: { type: integer } }

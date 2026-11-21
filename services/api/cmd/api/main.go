@@ -87,7 +87,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("/", httpx.NotFound)
 	var handler http.Handler = publicMux
-	var msgMux *http.ServeMux
+	var msgMux, convMux *http.ServeMux
 	var gate *msgapp.Gate      // nil without MySQL: the before_send hook then denies every send (fail-closed)
 	var authMux *http.ServeMux // /v1/auth/* answers carry credentials, so it is never run through the idempotency response cache
 	if cfg.MySQLDSN != "" {
@@ -116,6 +116,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 			authMux = m
 			gate = messageGate(pool, pm, log)
 			msgMux = messageMux(pool, log, im, gate, auth)
+			convMux = conversationMux(pool, log, im, auth)
 		} else {
 			gate = messageGate(pool, pm, log)
 		}
@@ -130,6 +131,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		if msgMux != nil {
 			top.Handle("/v1/messages", msgMux)
 			top.Handle("/v1/messages/", msgMux)
+			top.Handle("/v1/sync/", convMux)
 		}
 		top.Handle("/", rest)
 		handler = top
