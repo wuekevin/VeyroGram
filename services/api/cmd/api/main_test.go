@@ -831,6 +831,17 @@ func TestRevocationKickReconnectAndNoticeOverRealWebSocket(t *testing.T) {
 	_, _, devB := login("device-bbbbbbbbbbbbbbbb", "web")
 	accC, _, _ := login("device-cccccccccccccccc", "app")
 
+	// B and C signed in to an account that already had live devices (A first, then A+B): two new_login notices, none for A's first login.
+	var nl int
+	if err := d.QueryRow("SELECT COUNT(*) FROM outbox WHERE topic='identity.device_notice' AND payload LIKE '%\"kind\":\"new_login\"%'").Scan(&nl); err != nil || nl != 2 {
+		t.Fatalf("expected 2 new_login notices: %d %v", nl, err)
+	}
+	eventually(t, "new_login notices delivered", 10*time.Second, func() bool {
+		var pending int
+		_ = d.QueryRow("SELECT COUNT(*) FROM outbox WHERE topic='identity.device_notice' AND status<>'done'").Scan(&pending)
+		return pending == 0
+	})
+
 	uid, tokA, c := imToken(accA)
 	if c != 200 || tokA == "" {
 		t.Fatalf("im token A: %d", c)

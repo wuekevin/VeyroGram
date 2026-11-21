@@ -138,6 +138,16 @@ func (s *MySQLStore) Login(ctx context.Context, in ports.LoginTx) (ports.Session
 		}
 		id, _ := res.LastInsertId()
 		sess.DeviceID = uint64(id)
+		// A new device signing in to an account that already has live devices: tell them (the new device sees it too and can match device_id).
+		var others int
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM device WHERE user_id=? AND id<>? AND revoked_at IS NULL", sess.UserID, sess.DeviceID).Scan(&others); err != nil {
+			return sess, err
+		}
+		if others > 0 {
+			if err := queueNotice(ctx, tx, in.Tenant, sess.UID, map[string]any{"kind": "new_login", "device_id": strconv.FormatUint(sess.DeviceID, 10), "class": string(in.Device.Class), "name": in.Device.Name}, in.Now); err != nil {
+				return sess, err
+			}
+		}
 	case err != nil:
 		return sess, err
 	default:
@@ -230,12 +240,12 @@ func bumpAndQueue(ctx context.Context, tx *sql.Tx, tenant, userID uint64, uid st
 	return err
 }
 
-// queueNotice records, in the same transaction, the notice for the user's other devices. The ordering key matches the IM sync's so the notice
-// is sent after the kick and token re-registration.
+// queueNotice records, in the same transaction, the notice for the user's other devices. It has its own ordering key on purpose: a cosmetic
+// notice that fails or is slow must never hold back the security-relevant IM sync (kick + token rotation) queued for the same user.
 func queueNotice(ctx context.Context, tx *sql.Tx, tenant uint64, uid string, n map[string]any, now time.Time) error {
 	n["uid"] = uid
 	payload, _ := json.Marshal(n)
-	_, err := outbox.Enqueue(ctx, tx, now, tenant, domain.TopicDeviceNotice, "im:"+uid, payload)
+	_, err := outbox.Enqueue(ctx, tx, now, tenant, domain.TopicDeviceNotice, "notice:"+uid, payload)
 	return err
 }
 
