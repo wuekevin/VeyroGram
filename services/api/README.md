@@ -47,6 +47,8 @@ a signing key shorter than 32 bytes or a known default, wildcard CORS, debug mod
 |---|---|
 | `install preflight [-install] [-fresh] [-json] [-ports a,b]` | Checks the host and the servers and lists blockers with fixes; exit 3 if any blocks. Reads the same `VG_*` variables as the service. MySQL must be 8.0 (MariaDB is refused), Redis 7+; in staging/production Redis must require a password and use `noeviction` (the token deny-list lives there), MySQL must be in strict mode, the env file must not be world-readable |
 | `install run -username U [-password-stdin] [-fresh]` | Wizard: configuration → password policy → preflight → already-installed check → migrations → first administrator. Nothing is written before the first three pass. Exit 4 when the database says the installation is initialised (deleting `install.lock` changes nothing) |
+| `backup keygen -out-dir D` / `backup encrypt -pub P` / `backup decrypt -key K` | Backup encryption (RSA-OAEP-wrapped AES-256-GCM, chunked). `keygen` runs on **your** machine, never on the backup host; the host only ever has the public key. Used by `infrastructure/backup/*.sh` (see its README) |
+| `db provision-backup [-user U -host H]` | Creates/re-keys the read-only MySQL account for backups (password from `VG_PROVISION_BACKUP_PASSWORD`) |
 | `probe [-textfile FILE]` | api readiness (includes MySQL), worker, IM; exit 1 if any is down |
 
 A value in the environment that still contains an install marker (`@@FILL:…@@`, `@@GEN:…@@`) is a configuration error: the service does not start on a file nobody finished filling in.

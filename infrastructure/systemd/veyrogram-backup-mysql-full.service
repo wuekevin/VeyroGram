@@ -1,0 +1,35 @@
+# Encrypted off-host backups (infrastructure/backup/README.md). Started by its timer; a failure shows as a failed unit and in the backup metrics.
+[Unit]
+Description=VeyroGram MySQL full backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=veyrogram-backup
+Group=veyrogram-backup
+EnvironmentFile=/etc/veyrogram/backup.env
+ExecStart=/opt/veyrogram/backup/current/backup.sh mysql-full
+UMask=0077
+TimeoutStartSec=6h
+ReadWritePaths=/var/backups/veyrogram /var/lib/node_exporter/textfile_collector
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=

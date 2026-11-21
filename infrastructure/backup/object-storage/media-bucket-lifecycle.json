@@ -1,0 +1,17 @@
+{
+  "Rules": [
+    {
+      "ID": "veyrogram-media-versions",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 30 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    },
+    {
+      "ID": "veyrogram-media-expired-delete-markers",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "Expiration": { "ExpiredObjectDeleteMarker": true }
+    }
+  ]
+}

@@ -160,3 +160,58 @@ tests:
         exp_alerts:
           - exp_labels: { severity: page }
             exp_annotations: { summary: "The health probe has not reported for over 5 minutes: veyrogram-probe.timer stopped or the host's textfile collector is not being scraped. Without it a down API is only seen by the scrape alert" }
+  - name: a failed backup run pages, a later success clears it
+    interval: 1m
+    input_series:
+      - series: 'veyrogram_backup_last_success_timestamp_seconds{kind="mysql-full"}'
+        values: '100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100 100'
+      - series: 'veyrogram_backup_last_failure_timestamp_seconds{kind="mysql-full"}'
+        values: '0 0 0 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VeyroGramBackupFailed
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: VeyroGramBackupFailed
+        exp_alerts:
+          - exp_labels: { severity: page, kind: mysql-full }
+            exp_annotations: { summary: "The latest mysql-full backup run failed (nothing newer succeeded). Read the unit's journal: journalctl -u veyrogram-backup-mysql-full" }
+  - name: a backup that never succeeded and failed is still a failure
+    interval: 1m
+    input_series:
+      - series: 'veyrogram_backup_last_failure_timestamp_seconds{kind="im"}'
+        values: '50+0x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: VeyroGramBackupFailed
+        exp_alerts:
+          - exp_labels: { severity: page, kind: im }
+            exp_annotations: { summary: "The latest im backup run failed (nothing newer succeeded). Read the unit's journal: journalctl -u veyrogram-backup-im" }
+  - name: stale binlog shipment pages within 20 minutes, a fresh one does not
+    interval: 1m
+    input_series:
+      - series: 'veyrogram_backup_last_success_timestamp_seconds{kind="mysql-binlog"}'
+        values: '0 60 120 180 240 300 300 300 300 300 300 300 300 300 300 300 300 300 300 300 300 300 300 300 300 300 300 300'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: VeyroGramBackupStale
+        exp_alerts: []
+      - eval_time: 26m
+        alertname: VeyroGramBackupStale
+        exp_alerts:
+          - exp_labels: { severity: page, kind: mysql-binlog }
+            exp_annotations: { summary: "No successful mysql-binlog backup for too long (full/IM: 26 h, binlog: 20 min — the binlog figure is the database's data-loss window). The timer may have stopped" }
+  - name: no backup metric at all pages
+    interval: 1m
+    input_series:
+      - series: 'up{job="veyrogram-api"}'
+        values: '1+0x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: VeyroGramBackupMetricsMissing
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: VeyroGramBackupMetricsMissing
+        exp_alerts:
+          - exp_labels: { severity: page, kind: mysql-full }
+            exp_annotations: { summary: "There is no mysql-full backup success metric at all: backups never ran, or the textfile collector is not scraped. Assume there is NO backup until proven otherwise" }

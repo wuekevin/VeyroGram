@@ -29,7 +29,11 @@ type IM struct {
 	cancel context.CancelFunc
 	logs   *lockedBuf
 	done   chan struct{}
+	data   string
 }
+
+// DataDir is the directory the IM stores its state in.
+func (im *IM) DataDir() string { return im.data }
 
 type lockedBuf struct {
 	mu sync.Mutex
@@ -114,6 +118,7 @@ type Options struct {
 	BeforeSendURL string
 	SigningSecret string
 	NotifyURL     string
+	DataDir       string // use this existing data directory instead of a fresh one (restore rehearsals)
 }
 
 // StartOpts is the general launcher.
@@ -130,7 +135,11 @@ func StartOpts(t testing.TB, o Options) *IM {
 	}
 	raw, _ := os.ReadFile(ex)
 	dir := t.TempDir()
-	conf := strings.ReplaceAll(string(raw), "./data/wukongim-single-node-data", filepath.Join(dir, "data"))
+	dataPath := filepath.Join(dir, "data")
+	if o.DataDir != "" {
+		dataPath = o.DataDir
+	}
+	conf := strings.ReplaceAll(string(raw), "./data/wukongim-single-node-data", dataPath)
 	api, cl, mg, tcp, ws := freePort(t), freePort(t), freePort(t), freePort(t), freePort(t)
 	conf = strings.ReplaceAll(conf, "127.0.0.1:7001", fmt.Sprintf("127.0.0.1:%d", cl))
 	conf = setKey(t, conf, "api", "listen_addr", fmt.Sprintf(`"127.0.0.1:%d"`, api))
@@ -153,7 +162,7 @@ func StartOpts(t testing.TB, o Options) *IM {
 		conf = setKey(t, conf, "webhook.before_send", "enabled", "true")
 		conf = setKey(t, conf, "webhook.before_send", "http_addr", fmt.Sprintf("%q", beforeSendURL))
 	}
-	im := &IM{Ports: map[string]int{"api": api, "manager": mg, "cluster": cl, "tcp": tcp, "ws": ws}, APIURL: fmt.Sprintf("http://127.0.0.1:%d", api), t: t, bin: bin, cfg: filepath.Join(dir, "wukongim.toml"), logs: &lockedBuf{}}
+	im := &IM{Ports: map[string]int{"api": api, "manager": mg, "cluster": cl, "tcp": tcp, "ws": ws}, APIURL: fmt.Sprintf("http://127.0.0.1:%d", api), t: t, bin: bin, cfg: filepath.Join(dir, "wukongim.toml"), logs: &lockedBuf{}, data: dataPath}
 	if err := os.WriteFile(im.cfg, []byte(conf), 0o600); err != nil {
 		t.Fatal(err)
 	}

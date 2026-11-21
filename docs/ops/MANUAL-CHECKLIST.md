@@ -215,6 +215,26 @@ sudo -u veyrogram /opt/veyrogram/api/current/veyrogram-api probe      # 全部 o
 
 ---
 
+### C10. 备份与恢复演练（Story 1.22）
+Mac 上已用真实 MySQL 8.0（含 binlog）、第二个真实 mysqld、真实 WuKongIM 进程演练过完整流程（按时间点恢复到事故前一秒、篡改/截断/缺块/错钥一律在写入目标之前被拒、IM 数据目录快照恢复后消息与序号一致）。**下面这些只有你能做**：
+1. **在你自己的电脑上生成密钥对**（不要在服务器上做）：`veyrogram-api backup keygen -out-dir ~/vg-backup-keys`。把 `private.pem` 存到**至少两个**安全的地方（密码管理器 + 离线介质）：**丢了它，所有备份都无法读取，没有任何补救办法**。只把 `public.pem` 拷到服务器 `/etc/veyrogram/backup-public.pem`。不要把私钥发给我或放进仓库。
+2. **选异地存储并准备“只能追加”的上传凭证**：另一台机器（scp/rsync）或对象存储（rclone）。凭证只能新增对象，不能删除/覆盖（这样主机被攻破也抹不掉历史）。把上传命令写进 `/etc/veyrogram/backup.env` 和 `backup-im.env` 的 `VG_BACKUP_UPLOAD_CMD`（**单引号包住整条命令**，例如 `VG_BACKUP_UPLOAD_CMD='rclone copyto "$1" remote:veyrogram-backups/$(basename "$1")'`）。
+3. **创建备份账号并写 my.cnf**：`VG_MYSQL_ADMIN_DSN=... VG_PROVISION_BACKUP_PASSWORD=$(openssl rand -hex 24) veyrogram-api db provision-backup`，把账号口令写进 `/etc/veyrogram/backup-mysql.cnf`（`[client]` 段 user/password/host/port；`chmod 0600`，属主 `veyrogram-backup`）。服务器 MySQL 必须开 binlog 且 `binlog_format=ROW`（预检会检查）。
+4. **手动跑一遍再启用定时器**：`sudo -u veyrogram-backup /opt/veyrogram/backup/current/backup.sh mysql-full`，确认异地出现 `mysql-full-*.vgbk`；再跑 `mysql-binlog`；IM 用 `sudo -u veyrogram-im ... backup.sh im`（**会让 IM 停几秒**；先确认 polkit 规则生效：该账号能执行 `systemctl stop/start veyrogram-wukongim`，但不能操作别的单元）。然后 `systemctl enable --now veyrogram-backup-mysql-full.timer veyrogram-backup-mysql-binlog.timer veyrogram-backup-prune.timer veyrogram-backup-im.timer`，并确认 node_exporter 的 textfile 目录里出现 `veyrogram_backup*.prom`，告警 `VeyroGramBackupMetricsMissing` 随之消失。
+5. **在 staging（另一台主机或另一个 MySQL 实例）做一次真实恢复演练**，并把耗时记下来（这就是 RTO 的依据）：
+   ```
+   restore.sh verify  -d <从异地拉回的目录> -k private.pem                       # 先认证所有文件
+   restore.sh mysql   -d <目录> -k private.pem -t staging.cnf -u '2026-11-21 12:00:00'   # 时间为 UTC
+   restore.sh im      -f <im-*.vgbk> -k private.pem -o /var/lib/veyrogram-im-restore
+   ```
+   核对：关键表行数、最新消息、`audit_log` 链用 `veyrogram-api audit verify` 通过。恢复到“事故前一刻”时，确认事故本身没有被重放。
+6. **IM 的数据丢失窗口 = 快照间隔（默认每天一次）**。如果这个窗口不可接受，决定：缩短间隔（每次会停 IM 几秒），或用 LVM/ZFS/btrfs 卷快照（`VG_IM_QUIESCE=none`，这条路径我没有演练过，上线前必须自己演练），或等多节点复制（v1 单节点不支持）。**这是产品决定，不是我能替你选的。**
+7. **数据库与 IM 恢复到不同时刻之后的对账脚本还没有写**（以 IM 序号为准重建 `message_ref`）。跨存储恢复暂时要人工核对：`message_ref` 里指向的消息在 IM 里是否存在。我会在后续 Story 里补这个脚本；在此之前，演练时请把“两边恢复点不一致”这一步写进演练记录。
+8. **对象存储**（选定厂商后）：`VG_S3_ENDPOINT=... infrastructure/backup/object-storage-setup.sh backup <桶名>`，以及 `media <桶名>`；它会读回并校验版本化与生命周期是否真的生效。保留天数（备份 35 天、旧版本 7 天、媒体旧版本 30 天）只是默认值，先改 `object-storage/*.json`（PRD OQ-7）。仅用假 provider 测过，真实 provider 的行为必须在这里验证。
+9. **季度演练**：把第 5 步排进日历；演练失败或缺失会阻断发布就绪（AD-22）。
+
+---
+
 ## D. 审计锚点的异地存储（防“控制了数据库的人改历史”）
 
 为什么必须你来：它必须部署在**主机和数据库管理员都无法改动**的另一台机器/另一个云账号上，这是安全属性本身，我不能在同一台机器上“模拟”。

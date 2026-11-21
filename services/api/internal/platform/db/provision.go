@@ -58,3 +58,30 @@ func sanitize(err error, secrets ...string) error {
 	}
 	return errors.New(msg)
 }
+
+// BackupGrants are the global privileges of the backup account, and no more: reading data (SELECT, SHOW VIEW, TRIGGER, EVENT), a consistent dump with a fresh
+// binlog file (RELOAD), the binlog position and file list (REPLICATION CLIENT), and streaming closed binlog files (REPLICATION SLAVE). It cannot write,
+// change schema or manage accounts; MySQL has no narrower way to allow the last three, which are global-only privileges.
+const BackupGrants = "SELECT, SHOW VIEW, TRIGGER, EVENT, RELOAD, REPLICATION CLIENT, REPLICATION SLAVE"
+
+// ProvisionBackup creates (or re-keys) the backup account used by infrastructure/backup/backup.sh. Idempotent; re-running rotates the password.
+func ProvisionBackup(ctx context.Context, admin *sql.DB, host, user, pass string) error {
+	for _, v := range []string{host, user} {
+		if !identRE.MatchString(v) {
+			return fmt.Errorf("db: unsafe identifier %q", v)
+		}
+	}
+	if !passRE.MatchString(pass) {
+		return fmt.Errorf("db: passwords must be 24-128 chars from [A-Za-z0-9_-+=.@#%%^*!~:,]")
+	}
+	for _, s := range []string{
+		fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass),
+		fmt.Sprintf("ALTER USER '%s'@'%s' IDENTIFIED BY '%s'", user, host, pass),
+		fmt.Sprintf("GRANT %s ON *.* TO '%s'@'%s'", BackupGrants, user, host),
+	} {
+		if _, err := admin.ExecContext(ctx, s); err != nil {
+			return fmt.Errorf("db: provisioning the backup account failed (the password is never echoed): %w", sanitize(err, pass))
+		}
+	}
+	return nil
+}

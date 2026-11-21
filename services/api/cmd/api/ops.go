@@ -36,6 +36,7 @@ import (
 //	admin bootstrap -username U   create the first administrator (password from VG_ADMIN_BOOTSTRAP_PASSWORD or -password-stdin); works once
 //	outbox replay <id>          put a dead-lettered event back in the queue (and record it in the audit log)
 //	db provision [-database D -app-user U -migrator-user M -host H]   create/re-key the app and migrator accounts (admin; passwords from env)
+//	db provision-backup [-user U -host H]   create/re-key the read-only backup account (password from VG_PROVISION_BACKUP_PASSWORD)
 //	db grant-app -database D -user U -host H   (as admin, via VG_MYSQL_ADMIN_DSN) per-table grants for the application account
 func runOps(args []string, getenv func(string) string, stderr *os.File) int {
 	if args[0] == "db" {
@@ -232,9 +233,40 @@ func runDBProvision(args []string, getenv func(string) string, stderr io.Writer)
 	return 0
 }
 
+// runDBProvisionBackup implements `db provision-backup [-user U -host H]`: the read-only account the backup scripts use. Password from VG_PROVISION_BACKUP_PASSWORD.
+func runDBProvisionBackup(args []string, getenv func(string) string, stderr io.Writer) int {
+	fs := flag.NewFlagSet("provision-backup", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	user := fs.String("user", "vg_backup", "backup account")
+	host := fs.String("host", "127.0.0.1", "account host")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	dsn, pass := getenv("VG_MYSQL_ADMIN_DSN"), getenv("VG_PROVISION_BACKUP_PASSWORD")
+	if dsn == "" || pass == "" {
+		fmt.Fprintln(stderr, "VG_MYSQL_ADMIN_DSN and VG_PROVISION_BACKUP_PASSWORD are required (the password is never accepted as an argument)")
+		return exitConfig
+	}
+	admin, err := db.Open(dsn)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitConfig
+	}
+	defer admin.Close()
+	if err := db.ProvisionBackup(context.Background(), admin, *host, *user, pass); err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return 1
+	}
+	fmt.Printf("provisioned backup account %s@%s (read-only; global privileges: %s)\n", *user, *host, db.BackupGrants)
+	return 0
+}
+
 func runDBGrant(args []string, getenv func(string) string, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "provision" {
 		return runDBProvision(args[1:], getenv, stderr)
+	}
+	if len(args) > 0 && args[0] == "provision-backup" {
+		return runDBProvisionBackup(args[1:], getenv, stderr)
 	}
 	if len(args) == 0 || args[0] != "grant-app" {
 		fmt.Fprintln(stderr, "usage: db grant-app -database D -user U -host H   (admin DSN in VG_MYSQL_ADMIN_DSN)")

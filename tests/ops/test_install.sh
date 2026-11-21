@@ -30,7 +30,7 @@ for envname in production staging; do
   f=$r/etc/veyrogram/api.env
   check "install exits 0" "[[ $rc -eq 0 ]]"
   check "env file mode is 0640" "[[ \$(mode $f) == 640 ]]"
-  check "directories are 0750" "[[ \$(mode $r/etc/veyrogram) == 750 && \$(mode $r/opt/veyrogram/api) == 750 && \$(mode $r/var/log/veyrogram) == 750 ]]"
+  check "directories are 0750" "[[ \$(mode $r/etc/veyrogram) == 750 && \$(mode $r/var/log/veyrogram) == 750 && \$(mode $r/var/backups/veyrogram) == 700 && \$(mode $r/var/backups/veyrogram-im) == 700 ]]"
   check "no @@GEN placeholder is left" "! grep -q '@@GEN:' $f"
   check "operator-only values are listed by name" "grep -q 'SMS provider API key' $out && grep -q 'database DSN of the application account' $out"
   check "the service REFUSES the file while @@FILL values remain" "! checkcfg $f"
@@ -46,6 +46,9 @@ for envname in production staging; do
   check "second run leaves the env file untouched" "[[ \$(cksum <$f) == \"$sum1\" ]]"
   check "second run says it kept the file" "grep -q 'kept existing' $tmp/again.out"
   check "canary overrides file is installed 0640 and moves every listener" "[[ \$(mode $r/etc/veyrogram/canary.env) == 640 ]] && grep -q 'VG_HTTP_ADDR=127.0.0.1:8081' $r/etc/veyrogram/canary.env && grep -q 'VG_MANAGER_ENABLED=false' $r/etc/veyrogram/canary.env"
+  check "/etc/veyrogram stays 0750 while releases are world-readable (no secrets there) so the backup accounts can run the binary" "[[ \$(mode $r/opt/veyrogram/api) == 755 && \$(mode $r/opt/veyrogram) == 755 ]]"
+  check "backup scripts, env templates (0640), units, timers and the polkit rule are installed" "[[ -x $r/opt/veyrogram/backup/current/backup.sh && -x $r/opt/veyrogram/backup/current/restore.sh && \$(mode $r/etc/veyrogram/backup.env) == 640 && \$(mode $r/etc/veyrogram/backup-im.env) == 640 && -f $r/etc/systemd/system/veyrogram-backup-mysql-full.timer && -f $r/etc/systemd/system/veyrogram-backup-im.service && -f $r/etc/polkit-1/rules.d/50-veyrogram-backup.rules ]]"
+  check "the polkit rule allows only stopping/starting the IM unit, for the IM account" "grep -q 'veyrogram-wukongim.service' $r/etc/polkit-1/rules.d/50-veyrogram-backup.rules && grep -q 'subject.user == \"veyrogram-im\"' $r/etc/polkit-1/rules.d/50-veyrogram-backup.rules"
   check "canary and probe units (and timer) are installed" "[[ -f $r/etc/systemd/system/veyrogram-api-canary.service && -f $r/etc/systemd/system/veyrogram-probe.service && -f $r/etc/systemd/system/veyrogram-probe.timer ]]"
   check "units, journald limits and logrotate are installed" "[[ -f $r/etc/systemd/system/veyrogram-api.service && -f $r/etc/systemd/system/veyrogram-worker.service && -f $r/etc/systemd/journald.conf.d/veyrogram.conf && -f $r/etc/logrotate.d/veyrogram ]]"
 done

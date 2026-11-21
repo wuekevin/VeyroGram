@@ -1,0 +1,10 @@
+[Unit]
+Description=VeyroGram MySQL binlog shipment, every 5 minutes (this interval is the data-loss window, RPO, for the database)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

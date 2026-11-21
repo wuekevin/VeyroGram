@@ -17,6 +17,8 @@ step "OpenAPI diff vs base ref"         python3 -I tools/openapi_diff.py --dir p
 step "deploy/rollback rehearsal"        bash tests/ops/test_deploy.sh
 step "install rehearsal (secrets, modes, idempotence, templates accepted by the real binary)" bash tests/ops/test_install.sh
 step "canary rehearsal (real nginx traffic split, health gate, abort, promote)" bash tests/ops/test_canary.sh
+step "object-storage setup (fake aws, read-back checks)" bash tests/ops/test_objectstore.sh
+step "backup + restore rehearsal (real MySQL PITR, encryption, tamper refusals)" bash tests/ops/test_backup.sh
 step "nginx whitelist (real nginx)"     bash tests/ops/test_nginx.sh
 step "exposure gate (config check + scanner + real WuKongIM)" bash -c 'python3 -I tests/ops/test_exposure.py && { [ -n "${VG_TEST_WUKONGIM_BIN:-}" ] || echo "NOTE: VG_TEST_WUKONGIM_BIN unset - real WuKongIM exposure test was SKIPPED"; }'
 step "design tokens + contrast"         python3 -I packages/design-tokens/build.py

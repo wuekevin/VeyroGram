@@ -44,6 +44,8 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 			return runMigrate(args[1:], getenv, stderr)
 		case "install":
 			return runInstall(args[1:], getenv, os.Stdout, stderr)
+		case "backup":
+			return runBackup(args[1:], os.Stdin, os.Stdout, stderr)
 		case "probe":
 			return runProbe(args[1:], getenv, os.Stdout, stderr)
 		case "worker", "audit", "outbox", "db", "sync", "admin":

@@ -115,3 +115,88 @@ func TestProvisionThenMigrateThenGrantGivesTheThreeAccountModel(t *testing.T) {
 		t.Fatalf("new password must work: %v", err)
 	}
 }
+
+// The backup account can read and stream binlogs, and nothing else: no writes, no schema changes, no account management, password rotation works.
+func TestProvisionBackupAccountIsReadOnlyAndRotates(t *testing.T) {
+	adminDSN := os.Getenv("VG_TEST_MYSQL_ADMIN_DSN")
+	if adminDSN == "" {
+		t.Skip("VG_TEST_MYSQL_ADMIN_DSN not set")
+	}
+	admin, err := sql.Open("mysql", adminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	b := make([]byte, 4)
+	rand.Read(b)
+	sfx := hex.EncodeToString(b)
+	user, database := "vg_bk_p"+sfx, "veyrogram_it_bk_"+sfx
+	t.Cleanup(func() {
+		admin.Exec("DROP DATABASE IF EXISTS `" + database + "`")
+		admin.Exec("DROP USER IF EXISTS '" + user + "'@'127.0.0.1'")
+	})
+	ctx := context.Background()
+	if _, err := admin.Exec("CREATE DATABASE `" + database + "`"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec("CREATE TABLE `" + database + "`.t (id INT PRIMARY KEY)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec("INSERT INTO `" + database + "`.t VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	pass1, pass2 := "B"+strings.Repeat("b", 30)+sfx, "C"+strings.Repeat("c", 30)+sfx
+	if err := db.ProvisionBackup(ctx, admin, "127.0.0.1", user, "short"); err == nil {
+		t.Fatal("weak password accepted")
+	}
+	if err := db.ProvisionBackup(ctx, admin, "127.0.0.1", "x'; DROP", pass1); err == nil {
+		t.Fatal("unsafe identifier accepted")
+	}
+	if err := db.ProvisionBackup(ctx, admin, "127.0.0.1", user, pass1); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ProvisionBackup(ctx, admin, "127.0.0.1", user, pass1); err != nil {
+		t.Fatalf("must be idempotent: %v", err)
+	}
+	open := func(pass string) *sql.DB {
+		cfg, _ := mysql.ParseDSN(adminDSN)
+		cfg.User, cfg.Passwd, cfg.DBName = user, pass, ""
+		c, err := mysql.NewConnector(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sql.OpenDB(c)
+	}
+	bk := open(pass1)
+	defer bk.Close()
+	var n int
+	if err := bk.QueryRow("SELECT COUNT(*) FROM `" + database + "`.t").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("the backup account must be able to read: %d %v", n, err)
+	}
+	if rows, err := bk.Query("SHOW BINARY LOGS"); err != nil {
+		t.Fatalf("it needs the binlog list: %v", err)
+	} else {
+		rows.Close()
+	}
+	for _, stmt := range []string{
+		"INSERT INTO `" + database + "`.t VALUES (2)", "DELETE FROM `" + database + "`.t", "UPDATE `" + database + "`.t SET id=9",
+		"DROP TABLE `" + database + "`.t", "CREATE TABLE `" + database + "`.u (id INT)", "CREATE USER 'zz_evil'@'%' IDENTIFIED BY 'x'",
+		"GRANT ALL ON *.* TO '" + user + "'@'127.0.0.1'", "SET GLOBAL read_only=0",
+	} {
+		if _, err := bk.Exec(stmt); err == nil {
+			t.Errorf("the backup account must not be able to run: %s", stmt)
+			admin.Exec("DROP USER IF EXISTS 'zz_evil'@'%'")
+		}
+	}
+	if err := db.ProvisionBackup(ctx, admin, "127.0.0.1", user, pass2); err != nil {
+		t.Fatal(err)
+	}
+	if err := bk2Ping(open(pass1)); err == nil {
+		t.Error("the old password must stop working after rotation")
+	}
+	if err := bk2Ping(open(pass2)); err != nil {
+		t.Errorf("the new password must work: %v", err)
+	}
+}
+
+func bk2Ping(d *sql.DB) error { defer d.Close(); return d.Ping() }

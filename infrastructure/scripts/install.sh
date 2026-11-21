@@ -25,14 +25,22 @@ template=$infra/config/$env_name.env.template
 if (( real )) && ! id "$SVC_USER" >/dev/null 2>&1; then
   useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin "$SVC_USER"; log "created service account $SVC_USER"
 fi
+for extra in veyrogram-backup veyrogram-im; do   # backup runs as its own account; the IM snapshot runs as the IM's own account
+  if (( real )) && ! id "$extra" >/dev/null 2>&1; then useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin "$extra"; log "created service account $extra"; fi
+done
+inst() { mkdir -p "$(dirname "$ROOT$2")"; install -m 0644 "$1" "$ROOT$2"; }   # no -D: BSD install lacks it
 own() { (( real )) && chown "$@" || true; }   # ownership only matters on a real host
 
 # --- directories ---
 mk() { local mode=$1 owner=$2 dir=$3; mkdir -p "$ROOT$dir"; chmod "$mode" "$ROOT$dir"; own "$owner" "$ROOT$dir"; }
 mk 0750 "root:$SVC_USER"          /etc/veyrogram
-mk 0750 "$SVC_USER:$SVC_USER"     /opt/veyrogram/api
+mk 0755 root:root                 /opt/veyrogram          # releases hold no secrets (the binary is open source); the backup accounts must be able to run it
+mk 0755 "$SVC_USER:$SVC_USER"     /opt/veyrogram/api
 mk 0750 "$SVC_USER:$SVC_USER"     /var/lib/veyrogram
 mk 0750 "$SVC_USER:$SVC_USER"     /var/log/veyrogram
+mk 0700 veyrogram-backup:veyrogram-backup /var/backups/veyrogram
+mk 0700 veyrogram-im:veyrogram-im /var/backups/veyrogram-im
+mk 0755 root:root                 /opt/veyrogram/backup/current
 
 # --- environment file: generated once, never overwritten ---
 envfile=$ROOT/etc/veyrogram/api.env
@@ -51,6 +59,13 @@ fi
 if [[ ! -e $ROOT/etc/veyrogram/canary.env ]]; then
   ( umask 077; install -m 0640 "$infra/config/canary.env.template" "$ROOT/etc/veyrogram/canary.env" ); own "root:$SVC_USER" "$ROOT/etc/veyrogram/canary.env"
 fi
+# backup settings: templates placed once, never overwritten; the scripts the backup units run
+for pair in "backup.env.template:backup.env:veyrogram-backup" "backup-im.env.template:backup-im.env:veyrogram-im"; do
+  IFS=: read -r src dst grp <<<"$pair"
+  if [[ ! -e $ROOT/etc/veyrogram/$dst ]]; then ( umask 077; install -m 0640 "$infra/backup/$src" "$ROOT/etc/veyrogram/$dst" ); own "root:$grp" "$ROOT/etc/veyrogram/$dst"; fi
+done
+for f in backup.sh restore.sh lib.sh; do install -m 0755 "$infra/backup/$f" "$ROOT/opt/veyrogram/backup/current/$f"; done
+inst "$infra/polkit/50-veyrogram-backup.rules" /etc/polkit-1/rules.d/50-veyrogram-backup.rules
 fill=$(grep -v '^#' "$envfile" | grep -o '@@FILL:[^@]*@@' | sort -u || true)
 if [[ -n $fill ]]; then
   log "STILL TO FILL IN by hand in $envfile (the service refuses to start until they are):"
@@ -58,7 +73,6 @@ if [[ -n $fill ]]; then
 fi
 
 # --- systemd units, journald limits, log rotation ---
-inst() { mkdir -p "$(dirname "$ROOT$2")"; install -m 0644 "$1" "$ROOT$2"; }   # no -D: BSD install lacks it
 for u in "$infra"/systemd/*.service "$infra"/systemd/*.timer; do inst "$u" "/etc/systemd/system/$(basename "$u")"; done
 inst "$infra/systemd/journald-veyrogram.conf" /etc/systemd/journald.conf.d/veyrogram.conf
 inst "$infra/logrotate/veyrogram"             /etc/logrotate.d/veyrogram

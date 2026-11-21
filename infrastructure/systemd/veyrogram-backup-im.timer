@@ -1,0 +1,10 @@
+[Unit]
+Description=VeyroGram WuKongIM snapshot, daily (the IM is stopped for the length of one local copy; choose the hour: PRD OQ-7)
+
+[Timer]
+OnCalendar=*-*-* 04:07:00
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+// Lets the IM account (which runs the nightly IM snapshot) stop and start exactly one unit, and nothing else.
+// Install to /etc/polkit-1/rules.d/50-veyrogram-backup.rules (install.sh does).
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "veyrogram-im" &&
+        action.lookup("unit") == "veyrogram-wukongim.service" &&
+        (action.lookup("verb") == "stop" || action.lookup("verb") == "start")) {
+        return polkit.Result.YES;
+    }
+});

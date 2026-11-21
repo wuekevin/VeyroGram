@@ -1,0 +1,12 @@
+{
+  "Rules": [
+    {
+      "ID": "veyrogram-backup-retention",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "Expiration": { "Days": 35 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 7 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 3 }
+    }
+  ]
+}
