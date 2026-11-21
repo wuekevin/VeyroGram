@@ -75,8 +75,84 @@ paths:
               schema: { $ref: '#/components/schemas/TokenResponse' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
+  /v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke the calling device
+      description: Same as revoking the current device; its access tokens stop working immediately (Redis deny-list), refresh tokens die, and the IM token of its class is rotated.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Logged out. }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/devices:
+    get:
+      operationId: listDevices
+      summary: List the caller's live devices
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Devices, most recently used first; `current` marks the calling device.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Device' } }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/devices/{id}:
+    delete:
+      operationId: revokeDevice
+      summary: Revoke one of the caller's devices
+      description: |
+        Effective at once for API calls (Redis deny-list; if Redis is down it degrades to the access-token TTL of at most 15 minutes and an alert fires).
+        The device's refresh tokens die, and the IM token of its device class is rotated and its IM sessions kicked by the worker (about a second).
+        Another device of the same class is disconnected too and recovers by calling GET /v1/im/token again.
+        Idempotent. Someone else's or an unknown id answers 404.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Revoked. }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/im/token:
+    get:
+      operationId: getImToken
+      summary: Connection credentials for the IM (WuKongIM)
+      description: |
+        The token is derived per (user, device class) and rotates when a device of that class is revoked. Call again after any IM disconnect.
+        A revoked device never receives a token, even while Redis is down.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Credentials.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [uid, token, device_flag]
+                properties:
+                  uid: { type: string }
+                  token: { type: string }
+                  device_flag: { type: integer, description: 0 app, 1 web, 2 pc }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
   schemas:
+    Device:
+      type: object
+      required: [id, class, name, created_at, last_seen_at, current]
+      properties:
+        id: { type: string }
+        class: { type: string, enum: [app, web, pc] }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        current: { type: boolean }
     Phone:
       type: string
       description: E.164 (spaces and dashes are tolerated). No region is guessed.
@@ -140,7 +216,7 @@ components:
       properties:
         code:
           type: string
-          description: invalid_request, invalid_code, invalid_refresh_token, account_disabled, rate_limited, too_many_attempts, sms_unavailable, internal
+          description: invalid_request, invalid_code, invalid_refresh_token, account_disabled, invalid_token, not_found, im_unavailable, rate_limited, too_many_attempts, sms_unavailable, internal
         message: { type: string }
         trace_id: { type: string }
         details: { type: array, items: { type: string } }

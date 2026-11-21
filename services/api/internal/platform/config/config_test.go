@@ -123,6 +123,8 @@ func authOn() map[string]string {
 	m["VG_TOKEN_KEYS"] = "k1:AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
 	m["VG_PHONE_HASH_KEY"] = "phone-hash-key-0123456789abcdef-strong"
 	m["VG_TRUSTED_PROXIES"] = "127.0.0.1, 10.0.0.0/8"
+	m["VG_IM_TOKEN_KEY"] = "im-token-key-0123456789abcdef-strong-x"
+	m["VG_REDIS_ADDR"] = "127.0.0.1:6379"
 	return m
 }
 
@@ -143,6 +145,10 @@ func TestAuthSMSLoginRequiresSafeSettings(t *testing.T) {
 		"short phone key":            {mut("VG_PHONE_HASH_KEY", "short"), "VG_PHONE_HASH_KEY"},
 		"trust everyone":             {mut("VG_TRUSTED_PROXIES", "0.0.0.0/0"), "VG_TRUSTED_PROXIES"},
 		"bad proxy entry":            {mut("VG_TRUSTED_PROXIES", "nonsense"), "VG_TRUSTED_PROXIES"},
+		"no im key":                  {mut("VG_IM_TOKEN_KEY", ""), "VG_IM_TOKEN_KEY"},
+		"im key equals phone key":    {mut("VG_IM_TOKEN_KEY", "phone-hash-key-0123456789abcdef-strong"), "VG_IM_TOKEN_KEY"},
+		"no redis in production":     {mut("VG_REDIS_ADDR", ""), "VG_REDIS_ADDR"},
+		"public redis":               {mut("VG_REDIS_ADDR", "203.0.113.5:6379"), "VG_REDIS_ADDR"},
 		"bad flag":                   {mut("VG_AUTH_SMS_LOGIN", "maybe"), "VG_AUTH_SMS_LOGIN"},
 	} {
 		if _, vs := Load(env(tc.m)); !strings.Contains(keys(vs), tc.key) {

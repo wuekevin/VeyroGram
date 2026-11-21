@@ -20,6 +20,11 @@ jobs:
         ports: ['3306:3306']
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-only-root" --health-interval=5s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7.4              # token deny-list tests (Story 1.13); CI-only container, production is native Redis 7.x
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping" --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -35,7 +40,7 @@ jobs:
           git -C upstream/WuKongIM checkout --quiet "$pin"
           bash tools/build_wukongim.sh "$RUNNER_TEMP/wukongim"
       - name: test (race) incl. AD-1 import-direction check and WuKongIM contract tests
-        env: { VG_TEST_MYSQL_DSN: 'root:ci-only-root@tcp(127.0.0.1:3306)/' }
+        env: { VG_TEST_MYSQL_DSN: 'root:ci-only-root@tcp(127.0.0.1:3306)/', VG_TEST_REDIS_ADDR: '127.0.0.1:6379' }
         run: VG_TEST_WUKONGIM_BIN="$RUNNER_TEMP/wukongim" go test -race -count=1 ./...
   alerts:
     runs-on: ubuntu-latest

@@ -27,6 +27,8 @@ a signing key shorter than 32 bytes or a known default, wildcard CORS, debug mod
 | `VG_SMS_HTTP_URL` / `VG_SMS_HTTP_TOKEN` | — | gateway for the `http` provider (https required); posts `{"to":"+E164","message":"..."}` with a bearer token |
 | `VG_TOKEN_KEYS` | — | `kid:base64url(32-byte seed)[,kid2:...]`; the first key signs 15-minute access tokens (EdDSA), the others only verify (rotation). Generate: `openssl rand 32 \| base64 \| tr '+/' '-_' \| tr -d =` |
 | `VG_PHONE_HASH_KEY` | — | >= 32 bytes; HMAC key for the phone blind index and code hashes. **Changing it orphans every account**: treat it like a database key, back it up, never rotate casually |
+| `VG_REDIS_ADDR` / `VG_REDIS_PASSWORD` | — | Redis 7.x (loopback/private) for the access-token deny-list; required in staging/production when auth is on; without it revocation takes effect only at token expiry (<= 15 min) |
+| `VG_IM_TOKEN_KEY` | — | >= 32 bytes, different from `VG_PHONE_HASH_KEY`; derives WuKongIM connection tokens (rotated by revocations, never stored) |
 | `VG_TRUSTED_PROXIES` | — | CIDRs/IPs whose `X-Forwarded-For` is honoured (the Nginx host); empty = trust nobody (AD-16) |
 
 ## Develop

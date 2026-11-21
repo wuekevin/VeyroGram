@@ -3,11 +3,13 @@ package identityhttp
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -17,7 +19,9 @@ import (
 	"veyrogram/api/internal/identity/adapters"
 	"veyrogram/api/internal/identity/app"
 	"veyrogram/api/internal/identity/domain"
+	"veyrogram/api/internal/platform/authn"
 	"veyrogram/api/internal/platform/clientip"
+	"veyrogram/api/internal/platform/denylist"
 	"veyrogram/api/internal/platform/httpx"
 	"veyrogram/api/internal/platform/migrate"
 	"veyrogram/api/internal/platform/testdb"
@@ -55,14 +59,51 @@ func (f *fakeSMS) code(t *testing.T, phone string) string {
 	return m[1]
 }
 
+type fakeIM struct {
+	mu    sync.Mutex
+	calls []string
+	fail  bool
+}
+
+func (f *fakeIM) UpdateToken(_ context.Context, uid, tok string, flag, level uint8) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.fail {
+		return fmt.Errorf("im down")
+	}
+	f.calls = append(f.calls, fmt.Sprintf("token %s %d %s", uid, flag, tok))
+	return nil
+}
+func (f *fakeIM) DeviceQuit(_ context.Context, uid string, flag uint8) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.fail {
+		return fmt.Errorf("im down")
+	}
+	f.calls = append(f.calls, fmt.Sprintf("quit %s %d", uid, flag))
+	return nil
+}
+func (f *fakeIM) take() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c := f.calls
+	f.calls = nil
+	return c
+}
+
 type env struct {
-	t     *testing.T
-	h     http.Handler
-	svc   *app.Service
-	sms   *fakeSMS
-	now   time.Time
-	ring  *token.Ring
-	query func(q string, a ...any) int
+	t        *testing.T
+	db       *sql.DB
+	im       *fakeIM
+	deny     *denylist.Redis
+	degraded int
+	authCfg  authn.Config
+	h        http.Handler
+	svc      *app.Service
+	sms      *fakeSMS
+	now      time.Time
+	ring     *token.Ring
+	query    func(q string, a ...any) int
 }
 
 func newEnv(t *testing.T, trusted ...string) *env {
@@ -76,14 +117,26 @@ func newEnv(t *testing.T, trusted ...string) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{t: t, sms: &fakeSMS{last: map[string]string{}}, now: time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC), ring: ring}
+	e := &env{t: t, db: db, im: &fakeIM{}, sms: &fakeSMS{last: map[string]string{}}, now: time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC), ring: ring}
 	e.svc = &app.Service{Store: &adapters.MySQLStore{DB: db}, SMS: e.sms, Keys: ring, HashKey: []byte("test-phone-hash-key-0123456789abcdef"), Policy: domain.DefaultPolicy(), Now: func() time.Time { return e.now }}
+	e.svc.Tenant = uint64(time.Now().UnixNano()%1_000_000_000) + 10 // unique per test: deny-list keys in a shared Redis must not collide across fresh databases
+	e.svc.IM, e.svc.IMKey = e.im, []byte("test-im-token-key-0123456789abcdef-xx")
+	var dl denylist.List
+	if addr := os.Getenv("VG_TEST_REDIS_ADDR"); addr != "" {
+		r, err := denylist.Open(context.Background(), addr, "")
+		if err != nil {
+			t.Fatalf("redis: %v", err)
+		}
+		t.Cleanup(func() { r.Close() })
+		e.deny, dl, e.svc.Deny = r, r, r
+	}
 	tr, err := clientip.ParseTrusted(trusted)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	(&Handler{Svc: e.svc, Trusted: tr}).Mount(mux)
+	e.authCfg = authn.Config{Ring: ring, Deny: dl, Now: func() time.Time { return e.now }, OnDegraded: func() { e.degraded++ }}
+	(&Handler{Svc: e.svc, Trusted: tr, Auth: authn.Require(e.authCfg)}).Mount(mux)
 	e.h = httpx.RequestID(mux)
 	e.query = func(q string, a ...any) int {
 		var n int
@@ -437,14 +490,14 @@ func TestRefreshReuseRevokesDevice(t *testing.T) {
 	if e.query("SELECT COUNT(*) FROM device WHERE revoked_at IS NOT NULL") != 1 || e.query("SELECT COUNT(*) FROM login_event WHERE kind='refresh' AND result='reuse'") != 1 {
 		t.Fatal("device must be marked revoked and the reuse event recorded")
 	}
-	// logging in again with a fresh code re-establishes the device
+	// logging in again with a fresh code starts a NEW device (the revoked id must stay dead)
 	e.now = e.now.Add(2 * time.Minute)
 	e.sendCode(phoneA, dev1, "198.51.100.1")
 	if x := e.login(phoneA, e.sms.code(t, phoneA), dev1, "198.51.100.1"); x.Code != 200 {
 		t.Fatalf("re-login after revocation: %d %s", x.Code, x.Raw)
 	}
-	if e.query("SELECT COUNT(*) FROM device WHERE revoked_at IS NOT NULL") != 0 || e.query("SELECT COUNT(*) FROM device") != 1 {
-		t.Fatal("re-login must reuse and re-activate the device row")
+	if e.query("SELECT COUNT(*) FROM device WHERE revoked_at IS NOT NULL") != 1 || e.query("SELECT COUNT(*) FROM device") != 2 {
+		t.Fatal("a revoked device stays revoked forever; re-login must create a new device row")
 	}
 }
 

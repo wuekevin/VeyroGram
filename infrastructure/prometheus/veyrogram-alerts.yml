@@ -48,3 +48,13 @@ groups:
         for: 5m
         labels: { severity: page }
         annotations: { summary: "imgw calls to the IM API are failing (IM down or overloaded)" }
+      - alert: VeyroGramDenylistDegraded
+        expr: sum(increase(vg_auth_denylist_degraded_total[5m])) > 0
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "Redis token deny-list unreachable: device revocation only takes effect when access tokens expire (<= 15 min)" }
+      - alert: VeyroGramAuthRiskEvents
+        expr: sum(increase(vg_auth_events_total{result=~"reuse|locked"}[10m])) > 20
+        for: 0m
+        labels: { severity: ticket }
+        annotations: { summary: "Many login lockouts or refresh-token reuse detections: possible credential stuffing or token theft" }

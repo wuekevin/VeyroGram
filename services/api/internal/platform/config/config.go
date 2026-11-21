@@ -44,15 +44,18 @@ type Config struct {
 	IMWebhookSigning   string // optional HMAC key; when set, callbacks must carry a valid signature (needs the patched WuKongIM)
 	IMWebhookSecret    string // path secret for the callback URL (WuKongIM sends no signature); empty disables the callback listener
 	MySQLDSN           string
-	AuthSMSLogin       bool     // feature flag auth.sms_login: /v1/auth/* is not routed unless true (Story 1.12)
-	SMSProvider        string   // "http" (generic JSON gateway) or "log" (development/test only; prints codes to the log)
-	SMSHTTPURL         string   // gateway endpoint for the "http" provider; https outside development/test
-	SMSHTTPToken       string   // bearer token for the gateway
-	SMSBaoUser         string   // 短信宝 account (provider "smsbao")
-	SMSBaoKey          string   // 短信宝 ApiKey (or MD5 of the password); a secret
-	SMSBaoBaseURL      string   // default https://api.smsbao.com; override only for tests
-	TokenKeys          string   // kid:base64url(32-byte seed)[,...]; the first key signs access tokens (AD-9)
-	PhoneHashKey       string   // HMAC key for the phone blind index and one-time-code hashes
+	AuthSMSLogin       bool   // feature flag auth.sms_login: /v1/auth/* is not routed unless true (Story 1.12)
+	SMSProvider        string // "http" (generic JSON gateway) or "log" (development/test only; prints codes to the log)
+	SMSHTTPURL         string // gateway endpoint for the "http" provider; https outside development/test
+	SMSHTTPToken       string // bearer token for the gateway
+	SMSBaoUser         string // 短信宝 account (provider "smsbao")
+	SMSBaoKey          string // 短信宝 ApiKey (or MD5 of the password); a secret
+	SMSBaoBaseURL      string // default https://api.smsbao.com; override only for tests
+	TokenKeys          string // kid:base64url(32-byte seed)[,...]; the first key signs access tokens (AD-9)
+	PhoneHashKey       string // HMAC key for the phone blind index and one-time-code hashes
+	RedisAddr          string // host:port of the Redis 7.x holding the token deny-list; loopback/private only
+	RedisPassword      string
+	IMTokenKey         string   // HMAC key deriving WuKongIM connection tokens
 	TrustedProxies     []string // CIDRs/IPs whose X-Forwarded-For is honoured; empty trusts nobody (AD-16)
 }
 
@@ -98,6 +101,9 @@ func Load(getenv func(string) string) (Config, []Violation) {
 		SMSBaoBaseURL:      getenv("VG_SMSBAO_BASE_URL"),
 		TokenKeys:          getenv("VG_TOKEN_KEYS"),
 		PhoneHashKey:       getenv("VG_PHONE_HASH_KEY"),
+		RedisAddr:          getenv("VG_REDIS_ADDR"),
+		RedisPassword:      getenv("VG_REDIS_PASSWORD"),
+		IMTokenKey:         getenv("VG_IM_TOKEN_KEY"),
 		TrustedProxies:     splitList(getenv("VG_TRUSTED_PROXIES")),
 		CORSAllowedOrigins: splitList(getenv("VG_CORS_ALLOWED_ORIGINS")),
 	}
@@ -153,7 +159,20 @@ func (c Config) Validate() []Violation {
 	if _, err := clientip.ParseTrusted(c.TrustedProxies); err != nil {
 		add("VG_TRUSTED_PROXIES", err.Error())
 	}
+	if c.RedisAddr != "" {
+		if _, err := splitHostPort(c.RedisAddr); err != nil {
+			add("VG_REDIS_ADDR", err.Error())
+		} else if c.Strict() && !isInternalHost(c.RedisAddr) {
+			add("VG_REDIS_ADDR", "Redis must be loopback or a private address, never public")
+		}
+	}
 	if c.AuthSMSLogin {
+		if len(c.IMTokenKey) < 32 || weakValues[strings.ToLower(c.IMTokenKey)] || c.IMTokenKey == c.PhoneHashKey {
+			add("VG_IM_TOKEN_KEY", "auth.sms_login needs a key of at least 32 bytes, not a known default and different from VG_PHONE_HASH_KEY")
+		}
+		if c.Strict() && c.RedisAddr == "" {
+			add("VG_REDIS_ADDR", "auth.sms_login needs the Redis token deny-list in "+string(c.Env))
+		}
 		if c.MySQLDSN == "" {
 			add("VG_MYSQL_DSN", "auth.sms_login needs the database")
 		}

@@ -21,8 +21,10 @@ import (
 	"time"
 
 	"veyrogram/api/internal/platform/audit"
+	"veyrogram/api/internal/platform/denylist"
 	"veyrogram/api/internal/platform/outbox"
 	"veyrogram/api/internal/platform/testdb"
+	"veyrogram/api/internal/platform/testim"
 )
 
 func build(t *testing.T) string {
@@ -172,16 +174,16 @@ func TestMigrateUpStatusDownAgainstRealMySQL(t *testing.T) {
 	_, dsn := testdb.NewWithDSN(t)
 	bin := build(t)
 	env := []string{"VG_ENV=development", "VG_MYSQL_DSN=" + dsn}
-	if so, se, code := runBin(t, bin, env, "migrate", "up"); code != 0 || !strings.Contains(so, "applied: [1 2 3]") {
+	if so, se, code := runBin(t, bin, env, "migrate", "up"); code != 0 || !strings.Contains(so, "applied: [1 2 3 4]") {
 		t.Fatalf("up failed: %d %q %q", code, so, se)
 	}
-	if so, _, code := runBin(t, bin, env, "migrate", "status"); code != 0 || !strings.Contains(so, "applied=[1 2 3] pending=[] dirty=false") {
+	if so, _, code := runBin(t, bin, env, "migrate", "status"); code != 0 || !strings.Contains(so, "applied=[1 2 3 4] pending=[] dirty=false") {
 		t.Fatalf("status after up: %d %q", code, so)
 	}
 	if so, _, code := runBin(t, bin, env, "migrate", "up"); code != 0 || !strings.Contains(so, "applied: []") {
 		t.Fatalf("second up must be a no-op: %d %q", code, so)
 	}
-	if so, _, code := runBin(t, bin, env, "migrate", "down"); code != 0 || !strings.Contains(so, "reverted: [3]") {
+	if so, _, code := runBin(t, bin, env, "migrate", "down"); code != 0 || !strings.Contains(so, "reverted: [4]") {
 		t.Fatalf("down failed: %d %q", code, so)
 	}
 	if _, _, code := runBin(t, bin, env, "migrate", "down", "0"); code != 2 {
@@ -571,7 +573,7 @@ const authSeed = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
 
 func authEnv(dsn string, extra ...string) []string {
 	return append([]string{"VG_MYSQL_DSN=" + dsn, "VG_AUTH_SMS_LOGIN=true", "VG_SMS_PROVIDER=log", "VG_TOKEN_KEYS=k1:" + authSeed,
-		"VG_PHONE_HASH_KEY=phone-hash-key-0123456789abcdef-strong"}, extra...)
+		"VG_PHONE_HASH_KEY=phone-hash-key-0123456789abcdef-strong", "VG_IM_TOKEN_KEY=im-token-key-0123456789abcdef-strong-x"}, extra...)
 }
 
 func jpost(t *testing.T, url, body string, hdr ...string) (int, map[string]any) {
@@ -636,8 +638,122 @@ func TestAuthRoutesAbsentWhenFlagOffAndStartupGuards(t *testing.T) {
 		t.Fatalf("auth.sms_login off: routes must not exist, got %d", code)
 	}
 	prod := []string{"VG_ENV=production", "VG_MYSQL_DSN=vg_app:s3cret-pass@tcp(127.0.0.1:3306)/x", "VG_TOKEN_SIGNING_KEY=0123456789abcdef0123456789abcdef-strong",
-		"VG_AUTH_SMS_LOGIN=true", "VG_SMS_PROVIDER=log", "VG_TOKEN_KEYS=k1:" + authSeed, "VG_PHONE_HASH_KEY=phone-hash-key-0123456789abcdef-strong"}
+		"VG_AUTH_SMS_LOGIN=true", "VG_SMS_PROVIDER=log", "VG_TOKEN_KEYS=k1:" + authSeed, "VG_PHONE_HASH_KEY=phone-hash-key-0123456789abcdef-strong", "VG_IM_TOKEN_KEY=im-token-key-0123456789abcdef-strong-x"}
 	if so, se, code := runBin(t, bin, prod, "-check-config"); code == 0 || !strings.Contains(se+so, "VG_SMS_PROVIDER") {
 		t.Fatalf("production with the log SMS provider must be refused: %d %s%s", code, so, se)
+	}
+}
+
+// ---- Story 1.13: logout/revocation through the real binary and a real Redis deny-list ----
+
+func TestLogoutRevokesAccessTokenViaRedisDenyList(t *testing.T) {
+	redisAddr := os.Getenv("VG_TEST_REDIS_ADDR")
+	if redisAddr == "" {
+		t.Skip("VG_TEST_REDIS_ADDR not set")
+	}
+	_, dsn, _ := migrated(t)
+	// fresh databases restart device ids at 1, so entries left by an earlier run in the shared test Redis would deny them
+	clean := func() {
+		if r, err := denylist.Open(context.Background(), redisAddr, ""); err == nil {
+			defer r.Close()
+			r.C.Del(context.Background(), "vg:deny:dev:1:1", "vg:deny:dev:1:2")
+		}
+	}
+	clean()
+	t.Cleanup(clean)
+	p := start(t, authEnv(dsn, "VG_REDIS_ADDR="+redisAddr, "VG_METRICS_TOKEN=metrics-token-0123456789abcdef")...)
+	base := "http://" + p.pub
+	jpost(t, base+"/v1/auth/sms/code", `{"phone":"+8613800138001","device_id":"device-aaaaaaaaaaaaaaaa"}`)
+	m := regexp.MustCompile(`验证码 (\d{6})`).FindStringSubmatch(p.stderr.String())
+	if m == nil {
+		t.Fatal("no code")
+	}
+	_, body := jpost(t, base+"/v1/auth/login", `{"phone":"+8613800138001","code":"`+m[1]+`","device":{"id":"device-aaaaaaaaaaaaaaaa","class":"app"}}`)
+	access, _ := body["access_token"].(string)
+	if access == "" {
+		t.Fatalf("login: %v", body)
+	}
+	if c, b := get(t, base+"/v1/devices", "Bearer "+access); c != 200 || !strings.Contains(b, `"current":true`) {
+		t.Fatalf("devices: %d %s", c, b)
+	}
+	if c, _ := get(t, base+"/v1/devices", ""); c != 401 {
+		t.Fatalf("no token: %d", c)
+	}
+	if c, _ := jpost(t, base+"/v1/auth/logout", `{}`, "Authorization", "Bearer "+access); c != 204 {
+		t.Fatalf("logout: %d", c)
+	}
+	if c, _ := get(t, base+"/v1/devices", "Bearer "+access); c != 401 {
+		t.Fatalf("a logged-out access token must be refused at once, got %d", c)
+	}
+	// the IM is not running in this test: the revocation is queued for the worker, not lost
+	if code, mt := get(t, "http://"+p.internal+"/metrics", "Bearer metrics-token-0123456789abcdef"); code != 200 || !strings.Contains(mt, `vg_auth_events_total{kind="device",result="revoked"} 1`) {
+		t.Fatalf("revocation must be counted: %d\n%s", code, mt)
+	}
+}
+
+func TestStaleRedisAddressDegradesButServes(t *testing.T) {
+	_, dsn, _ := migrated(t)
+	p := start(t, authEnv(dsn, "VG_REDIS_ADDR=127.0.0.1:1", "VG_METRICS_TOKEN=metrics-token-0123456789abcdef")...)
+	base := "http://" + p.pub
+	jpost(t, base+"/v1/auth/sms/code", `{"phone":"+8613800138002","device_id":"device-aaaaaaaaaaaaaaaa"}`)
+	m := regexp.MustCompile(`验证码 (\d{6})`).FindStringSubmatch(p.stderr.String())
+	_, body := jpost(t, base+"/v1/auth/login", `{"phone":"+8613800138002","code":"`+m[1]+`","device":{"id":"device-aaaaaaaaaaaaaaaa","class":"app"}}`)
+	access, _ := body["access_token"].(string)
+	if c, _ := get(t, base+"/v1/devices", "Bearer "+access); c != 200 {
+		t.Fatalf("with Redis down valid tokens are still served: %d", c)
+	}
+	if _, mt := get(t, "http://"+p.internal+"/metrics", "Bearer metrics-token-0123456789abcdef"); !strings.Contains(mt, "vg_auth_denylist_degraded_total 1") {
+		t.Fatalf("degradation must be visible in metrics:\n%s", mt)
+	}
+}
+
+// Real API + real worker + real (patched) WuKongIM: the IM token is registered, and logout's queued IM sync is carried out against the real IM.
+func TestIMTokenAndLogoutSyncAgainstRealWuKongIM(t *testing.T) {
+	redisAddr := os.Getenv("VG_TEST_REDIS_ADDR")
+	if redisAddr == "" {
+		t.Skip("VG_TEST_REDIS_ADDR not set")
+	}
+	im := testim.Start(t, "") // skips when VG_TEST_WUKONGIM_BIN is not set
+	d, dsn, bin := migrated(t)
+	extra := []string{"VG_REDIS_ADDR=" + redisAddr, "VG_IM_API_URL=" + im.APIURL, "VG_METRICS_TOKEN=metrics-token-0123456789abcdef"}
+	if r, err := denylist.Open(context.Background(), redisAddr, ""); err == nil {
+		r.C.Del(context.Background(), "vg:deny:dev:1:1", "vg:deny:dev:1:2")
+		r.Close()
+	}
+	p := start(t, authEnv(dsn, extra...)...)
+	base := "http://" + p.pub
+	jpost(t, base+"/v1/auth/sms/code", `{"phone":"+8613800138003","device_id":"device-aaaaaaaaaaaaaaaa"}`)
+	m := regexp.MustCompile(`验证码 (\d{6})`).FindStringSubmatch(p.stderr.String())
+	_, body := jpost(t, base+"/v1/auth/login", `{"phone":"+8613800138003","code":"`+m[1]+`","device":{"id":"device-aaaaaaaaaaaaaaaa","class":"web"}}`)
+	access, _ := body["access_token"].(string)
+	c, imBody := get(t, base+"/v1/im/token", "Bearer "+access)
+	if c != 200 || !strings.Contains(imBody, `"device_flag":1`) || !strings.Contains(imBody, `"token":"`) {
+		t.Fatalf("the real IM must accept the token registration: %d %s", c, imBody)
+	}
+	if c, _ := jpost(t, base+"/v1/auth/logout", `{}`, "Authorization", "Bearer "+access); c != 204 {
+		t.Fatalf("logout: %d", c)
+	}
+	workerAddr := freeAddr(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, bin, "worker")
+	cmd.Env = baseEnv(append(authEnv(dsn, extra...), "VG_ENV=development", "VG_WORKER_INTERNAL_ADDR="+workerAddr)...)
+	buf := &syncBuf{}
+	cmd.Stderr = buf
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cancel(); _ = cmd.Wait() }()
+	var status string
+	for deadline := time.Now().Add(8 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		if d.QueryRow("SELECT status FROM outbox WHERE topic='identity.im_sync'").Scan(&status) == nil && status == "done" {
+			break
+		}
+	}
+	if status != "done" {
+		t.Fatalf("the worker must complete the IM sync against the real IM (status=%q); log:\n%s", status, buf.String())
+	}
+	var epoch int
+	if err := d.QueryRow("SELECT epoch FROM im_epoch").Scan(&epoch); err != nil || epoch != 1 {
+		t.Fatalf("the class epoch must have been bumped once: %d %v", epoch, err)
 	}
 }

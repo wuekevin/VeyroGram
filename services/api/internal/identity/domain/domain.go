@@ -100,7 +100,23 @@ var (
 	ErrDisabled       = errors.New("identity: account disabled")
 	ErrSMSUnavailable = errors.New("identity: sms delivery unavailable")
 	ErrCodeConsumed   = errors.New("identity: code already used")
+	ErrNotFound       = errors.New("identity: not found")
+	ErrIMUnavailable  = errors.New("identity: im gateway unavailable")
 )
+
+// TopicIMSync is the outbox topic that pushes a device class's current IM token to WuKongIM and kicks its sessions.
+const TopicIMSync = "identity.im_sync"
+
+// IMFlag maps a device class to WuKongIM's device flag (app=0, web=1, pc=2).
+func (c DeviceClass) IMFlag() uint8 {
+	switch c {
+	case ClassWeb:
+		return 1
+	case ClassPC:
+		return 2
+	}
+	return 0
+}
 
 // LimitError is returned when a rate limit or lockout applies; RetryAfter is an upper bound.
 type LimitError struct {

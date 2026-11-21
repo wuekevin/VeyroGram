@@ -14,10 +14,12 @@ import (
 	"syscall"
 	"time"
 
+	"veyrogram/api/internal/identity/domain"
 	"veyrogram/api/internal/platform/audit"
 	"veyrogram/api/internal/platform/config"
 	"veyrogram/api/internal/platform/db"
 	"veyrogram/api/internal/platform/health"
+	"veyrogram/api/internal/platform/imgw"
 	"veyrogram/api/internal/platform/logx"
 	"veyrogram/api/internal/platform/metrics"
 	"veyrogram/api/internal/platform/outbox"
@@ -78,7 +80,16 @@ func runOps(args []string, getenv func(string) string, stderr *os.File) int {
 			}
 		}()
 		defer srv.Shutdown(context.Background())
-		w := &outbox.Worker{DB: pool, Handlers: map[string]outbox.Handler{}, // topics register their handlers here as modules are added
+		handlers := map[string]outbox.Handler{} // topics register their handlers here as modules are added
+		if cfg.AuthSMSLogin {
+			im, err := imgw.New(cfg.IMAPIURL)
+			if err != nil {
+				fmt.Fprintln(stderr, "VG_IM_API_URL:", err)
+				return exitConfig
+			}
+			handlers[domain.TopicIMSync] = imSyncHandler(cfg, pool, im)
+		}
+		w := &outbox.Worker{DB: pool, Handlers: handlers,
 			Log: func(msg string, kv ...any) { log.Warn(msg, kv...) },
 			OnResult: func(topic, result string) {
 				pm.OutboxEvents.Inc(topic, result)

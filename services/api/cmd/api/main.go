@@ -71,6 +71,18 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 
 	hc := health.NewRegistry(2 * time.Second) // modules register readiness checks here as they are added
 
+	im, err := imgw.New(cfg.IMAPIURL)
+	if err != nil {
+		fmt.Fprintln(stderr, "VG_IM_API_URL:", err)
+		return exitConfig
+	}
+	im.Observe = func(op, result string, d time.Duration) {
+		pm.IMGWCalls.Inc(op, result)
+		pm.IMGWDuration.Observe(d.Seconds(), op)
+		if result == "error" {
+			log.Warn("imgw call failed", "op", op)
+		}
+	}
 	publicMux := http.NewServeMux()
 	publicMux.HandleFunc("/", httpx.NotFound)
 	var handler http.Handler = publicMux
@@ -93,7 +105,7 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		})
 		handler = idempotency.Middleware(&idempotency.Store{DB: pool}, nil, nil)(handler)
 		if cfg.AuthSMSLogin {
-			m, err := identityMux(cfg, pool, pm, log)
+			m, err := identityMux(cfg, pool, pm, log, im)
 			if err != nil {
 				fmt.Fprintln(stderr, err)
 				return exitConfig
@@ -105,6 +117,9 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 		rest := handler
 		top := http.NewServeMux()
 		top.Handle("/v1/auth/", authMux)
+		top.Handle("/v1/devices", authMux)
+		top.Handle("/v1/devices/", authMux)
+		top.Handle("/v1/im/", authMux)
 		top.Handle("/", rest)
 		handler = top
 	}
@@ -117,19 +132,6 @@ func run(args []string, getenv func(string) string, stderr *os.File) int {
 	imux.Handle("/", hc.Mux())
 	internal := &http.Server{Addr: cfg.InternalAddr, Handler: httpx.RequestID(imux), ReadHeaderTimeout: 5 * time.Second}
 
-	im, err := imgw.New(cfg.IMAPIURL)
-	if err != nil {
-		fmt.Fprintln(stderr, "VG_IM_API_URL:", err)
-		return exitConfig
-	}
-	im.Observe = func(op, result string, d time.Duration) {
-		pm.IMGWCalls.Inc(op, result)
-		pm.IMGWDuration.Observe(d.Seconds(), op)
-		if result == "error" {
-			log.Warn("imgw call failed", "op", op)
-		}
-	}
-	_ = im // consumed by the message/user modules in later stories; constructing it here validates configuration at startup
 	servers := map[string]*http.Server{"public": public, "internal": internal}
 	if cfg.IMWebhookSecret != "" {
 		allow, err := imwebhook.ParseAllow(cfg.IMWebhookAllow)

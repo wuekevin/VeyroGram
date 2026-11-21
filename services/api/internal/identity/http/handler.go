@@ -8,17 +8,21 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"veyrogram/api/internal/identity/app"
 	"veyrogram/api/internal/identity/domain"
+	"veyrogram/api/internal/platform/authn"
 	"veyrogram/api/internal/platform/clientip"
 	"veyrogram/api/internal/platform/httpx"
+	"veyrogram/api/internal/platform/token"
 )
 
 type Handler struct {
 	Svc     *app.Service
 	Trusted []*net.IPNet // AD-16
 	Log     *slog.Logger
+	Auth    func(http.Handler) http.Handler // authn.Require; the device/IM routes are mounted only when set
 }
 
 // Mount registers the routes on mux.
@@ -26,6 +30,12 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/auth/sms/code", h.requestCode)
 	mux.HandleFunc("POST /v1/auth/login", h.login)
 	mux.HandleFunc("POST /v1/auth/refresh", h.refresh)
+	if h.Auth != nil {
+		mux.Handle("POST /v1/auth/logout", h.Auth(http.HandlerFunc(h.logout)))
+		mux.Handle("GET /v1/devices", h.Auth(http.HandlerFunc(h.listDevices)))
+		mux.Handle("DELETE /v1/devices/{id}", h.Auth(http.HandlerFunc(h.revokeDevice)))
+		mux.Handle("GET /v1/im/token", h.Auth(http.HandlerFunc(h.imToken)))
+	}
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -62,6 +72,10 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 			code, msg = "too_many_attempts", "too many failed attempts, try again later"
 		}
 		httpx.WriteError(w, r, http.StatusTooManyRequests, code, msg)
+	case errors.Is(err, domain.ErrNotFound):
+		httpx.WriteError(w, r, http.StatusNotFound, "not_found", "no such resource")
+	case errors.Is(err, domain.ErrIMUnavailable):
+		httpx.WriteError(w, r, http.StatusServiceUnavailable, "im_unavailable", "the messaging service is unavailable, try again later")
 	case errors.Is(err, domain.ErrInvalidInput):
 		httpx.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request")
 	case errors.Is(err, domain.ErrInvalidCode):
@@ -155,4 +169,65 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, out(t))
+}
+
+func (h *Handler) claims(r *http.Request) token.Claims {
+	c, _ := authn.FromContext(r.Context())
+	return c
+}
+
+// POST /v1/auth/logout: revokes the calling device (its refresh tokens, access tokens and IM token).
+func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	if err := h.Svc.Logout(r.Context(), h.claims(r), h.ip(r), r.Header.Get("X-Request-Id")); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type deviceOut struct {
+	ID         string `json:"id"`
+	Class      string `json:"class"`
+	Name       string `json:"name"`
+	CreatedAt  string `json:"created_at"`
+	LastSeenAt string `json:"last_seen_at"`
+	Current    bool   `json:"current"`
+}
+
+// GET /v1/devices
+func (h *Handler) listDevices(w http.ResponseWriter, r *http.Request) {
+	ds, err := h.Svc.Devices(r.Context(), h.claims(r))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	items := make([]deviceOut, len(ds))
+	for i, d := range ds {
+		items[i] = deviceOut{strconv.FormatUint(d.ID, 10), string(d.Class), d.Name, d.CreatedAt.UTC().Format(time.RFC3339), d.LastSeenAt.UTC().Format(time.RFC3339), d.Current}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// DELETE /v1/devices/{id}
+func (h *Handler) revokeDevice(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		h.fail(w, r, domain.ErrNotFound)
+		return
+	}
+	if err := h.Svc.RevokeDevice(r.Context(), h.claims(r), id, h.ip(r), r.Header.Get("X-Request-Id")); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /v1/im/token
+func (h *Handler) imToken(w http.ResponseWriter, r *http.Request) {
+	c, err := h.Svc.IMToken(r.Context(), h.claims(r))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"uid": c.UID, "token": c.Token, "device_flag": c.Flag})
 }

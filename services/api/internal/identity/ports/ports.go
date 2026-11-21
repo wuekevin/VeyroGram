@@ -60,7 +60,39 @@ const (
 	RotateReuse // a rotated token was replayed: the device has been revoked
 )
 
+type DeviceInfo struct {
+	ID         uint64
+	Class      domain.DeviceClass
+	Name       string
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+}
+
+type RevokedDevice struct {
+	DeviceID uint64
+	UID      string
+	Class    domain.DeviceClass
+}
+
+// IMCreds are the facts needed to derive a device's IM token.
+type IMCreds struct {
+	Class  domain.DeviceClass
+	Epoch  uint64
+	Active bool // the device exists, belongs to the user and is not revoked
+}
+
+type IM interface {
+	UpdateToken(ctx context.Context, uid, token string, deviceFlag, deviceLevel uint8) error
+	DeviceQuit(ctx context.Context, uid string, deviceFlag uint8) error
+}
+
 type Store interface {
+	ListDevices(ctx context.Context, tenant uint64, userUID string) ([]DeviceInfo, error)
+	// RevokeDevice revokes a device owned by userUID: marks it, kills its refresh tokens, bumps the IM epoch of its class and queues
+	// the IM sync, all in one transaction. found=false when the device does not exist or belongs to someone else.
+	RevokeDevice(ctx context.Context, tenant uint64, userUID string, deviceID uint64, now time.Time) (rd RevokedDevice, found bool, err error)
+	IMCreds(ctx context.Context, tenant uint64, userUID string, deviceID uint64) (IMCreds, error)
+	ClassEpoch(ctx context.Context, tenant uint64, userUID string, class domain.DeviceClass) (uint64, error)
 	CountEvents(ctx context.Context, kind, result string, d Dim, val string, since time.Time) (int, error)
 	LastEvent(ctx context.Context, kind, result string, d Dim, val string) (time.Time, bool, error)
 	AddEvent(ctx context.Context, e Event) error

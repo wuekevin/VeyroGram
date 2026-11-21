@@ -61,3 +61,26 @@ tests:
         exp_alerts:
           - exp_labels: { severity: page }
             exp_annotations: { summary: "Outbox backlog above 1000 pending rows" }
+  - name: deny-list degradation pages after 2m
+    interval: 1m
+    input_series:
+      - series: 'vg_auth_denylist_degraded_total'
+        values: '0 0 5 10 15 20 25'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: VeyroGramDenylistDegraded
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: VeyroGramDenylistDegraded
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: "Redis token deny-list unreachable: device revocation only takes effect when access tokens expire (<= 15 min)" }
+  - name: healthy deny-list stays silent
+    interval: 1m
+    input_series:
+      - series: 'vg_auth_denylist_degraded_total'
+        values: '0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: VeyroGramDenylistDegraded
+        exp_alerts: []

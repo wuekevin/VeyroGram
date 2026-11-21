@@ -17,6 +17,7 @@ import (
 
 	"veyrogram/api/internal/identity/domain"
 	"veyrogram/api/internal/identity/ports"
+	"veyrogram/api/internal/platform/denylist"
 	"veyrogram/api/internal/platform/token"
 )
 
@@ -30,6 +31,9 @@ type Service struct {
 	Tenant  uint64
 	Now     func() time.Time
 	Observe func(kind, result string) // metrics hook; must not block
+	Deny    denylist.List             // optional: revoked-device deny-list (AD-9); nil = revocation relies on token expiry
+	IM      ports.IM                  // WuKongIM gateway for token sync and kicks
+	IMKey   []byte                    // HMAC key deriving IM tokens
 }
 
 // Tokens is the credential bundle returned by login and refresh.
@@ -277,6 +281,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, ip, traceID string)
 	case ports.RotateReuse:
 		ev.Result = "reuse"
 		s.event(ctx, ev)
+		s.denyDevice(ctx, sess.DeviceID) // the whole chain is dead: stop its access tokens too
 	default:
 		ev.Result = "invalid"
 		s.event(ctx, ev)
@@ -320,4 +325,110 @@ func randomHex(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// denyDevice blocks the device's access tokens until they would have expired anyway. A failure is reported, not fatal:
+// the refresh tokens are already revoked in the database, so the worst case is the access-token TTL (<= 15 min).
+func (s *Service) denyDevice(ctx context.Context, deviceID uint64) {
+	if s.Deny == nil {
+		s.observe("deny", "unconfigured")
+		return
+	}
+	if err := s.Deny.Deny(ctx, s.tenant(), deviceID, s.Policy.AccessTTL+time.Minute); err != nil {
+		s.observe("deny", "error")
+		return
+	}
+	s.observe("deny", "ok")
+}
+
+// Device is one live device of the caller.
+type Device struct {
+	ID         uint64
+	Class      domain.DeviceClass
+	Name       string
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+	Current    bool
+}
+
+func (s *Service) Devices(ctx context.Context, c token.Claims) ([]Device, error) {
+	ds, err := s.Store.ListDevices(ctx, s.tenant(), c.Subject)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Device, len(ds))
+	for i, d := range ds {
+		out[i] = Device{d.ID, d.Class, d.Name, d.CreatedAt, d.LastSeenAt, strconv.FormatUint(d.ID, 10) == c.Device}
+	}
+	return out, nil
+}
+
+// RevokeDevice revokes one of the caller's own devices (including the current one, which is logout). Revoking someone else's device or
+// an unknown id answers domain.ErrNotFound. The IM side (new class token + kick) is queued in the same transaction and done by the worker.
+func (s *Service) RevokeDevice(ctx context.Context, c token.Claims, deviceID uint64, ip, traceID string) error {
+	rd, found, err := s.Store.RevokeDevice(ctx, s.tenant(), c.Subject, deviceID, s.now())
+	if err != nil {
+		return err
+	}
+	if !found {
+		return domain.ErrNotFound
+	}
+	s.denyDevice(ctx, rd.DeviceID)
+	s.event(ctx, ports.Event{Kind: "device", Result: "revoked", IP: ip, TraceID: traceID, DeviceKey: strconv.FormatUint(deviceID, 10)})
+	return nil
+}
+
+// Logout revokes the device the access token belongs to.
+func (s *Service) Logout(ctx context.Context, c token.Claims, ip, traceID string) error {
+	id, err := strconv.ParseUint(c.Device, 10, 64)
+	if err != nil {
+		return domain.ErrNotFound
+	}
+	return s.RevokeDevice(ctx, c, id, ip, traceID)
+}
+
+// IMCredentials is what a client needs to connect to WuKongIM.
+type IMCredentials struct {
+	UID   string
+	Token string
+	Flag  uint8
+}
+
+func (s *Service) imToken(uid string, class domain.DeviceClass, epoch uint64) string {
+	m := hmac.New(sha256.New, s.IMKey)
+	m.Write([]byte("im\x00" + uid + "\x00" + string(class) + "\x00" + strconv.FormatUint(epoch, 10)))
+	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
+}
+
+// IMToken returns the connection token for the caller's device class and (re-)registers it with the IM, so a client kicked by a revocation of
+// a same-class device can simply fetch it again. The database, not only the deny-list, decides whether the device is still active.
+func (s *Service) IMToken(ctx context.Context, c token.Claims) (IMCredentials, error) {
+	id, err := strconv.ParseUint(c.Device, 10, 64)
+	if err != nil {
+		return IMCredentials{}, domain.ErrNotFound
+	}
+	cr, err := s.Store.IMCreds(ctx, s.tenant(), c.Subject, id)
+	if err != nil {
+		return IMCredentials{}, err
+	}
+	if !cr.Active {
+		return IMCredentials{}, domain.ErrNotFound
+	}
+	tok := s.imToken(c.Subject, cr.Class, cr.Epoch)
+	if err := s.IM.UpdateToken(ctx, c.Subject, tok, cr.Class.IMFlag(), 1); err != nil {
+		return IMCredentials{}, domain.ErrIMUnavailable
+	}
+	return IMCredentials{UID: c.Subject, Token: tok, Flag: cr.Class.IMFlag()}, nil
+}
+
+// SyncIM is the outbox handler body for TopicIMSync: kick the class's sessions, then register the current token. It is idempotent.
+func (s *Service) SyncIM(ctx context.Context, uid string, class domain.DeviceClass) error {
+	epoch, err := s.Store.ClassEpoch(ctx, s.tenant(), uid, class)
+	if err != nil {
+		return err
+	}
+	if err := s.IM.DeviceQuit(ctx, uid, class.IMFlag()); err != nil { // clears the stored token and closes owner-local sessions (AD-9)
+		return err
+	}
+	return s.IM.UpdateToken(ctx, uid, s.imToken(uid, class, epoch), class.IMFlag(), 1)
 }
