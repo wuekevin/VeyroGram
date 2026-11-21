@@ -132,7 +132,7 @@ paths:
     get:
       operationId: syncState
       summary: Drafts and conversation settings changed after `since`, in version order
-      description: Versions are per user, unique and gap-free, so `next_since` from the last page is a safe cursor. A cleared draft appears once with `deleted: true`.
+      description: Versions are per user, unique and gap-free, so `next_since` from the last page is a safe cursor. A cleared draft appears once with deleted set to true.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: since, in: query, schema: { type: integer, minimum: 0, default: 0 } }
