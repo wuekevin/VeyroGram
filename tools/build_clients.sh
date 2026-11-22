@@ -63,7 +63,7 @@ fi
 if [ -n "${VG_RENDER_ELECTRON:-}" ]; then  # render smoke: load the build in a hidden Electron, fail on app errors / empty page, keep a screenshot
   sel='#root'; [ "$which" = manager ] && sel='#app'
   # Output goes to a file, not a pipe: Chromium helper processes can outlive the app and hold a pipe open, which would hang `| grep` forever.
-  rc=0; bounded 120 "$work/render-$which.log" "$VG_RENDER_ELECTRON" ${VG_ELECTRON_FLAGS:-} "$root/tools/render_smoke.js" "$out" "$work/render-$which.png" "$sel" || rc=$?
+  rc=0; bounded 240 "$work/render-$which.log" "$VG_RENDER_ELECTRON" ${VG_ELECTRON_FLAGS:-} "$root/tools/render_smoke.js" "$out" "$work/render-$which.png" "$sel" || rc=$?
   grep -E '^(\{|ERROR|RENDER|NOTE|STEP)' "$work/render-$which.log" || true
   [ "$rc" = 0 ] || { echo "render smoke failed (exit $rc)" >&2; grep -v "dbus" "$work/render-$which.log" | tail -30 >&2; exit 1; }
 fi

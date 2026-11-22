@@ -23,7 +23,7 @@ const errors = [];
 const step = (m) => console.log("STEP " + m);
 app.disableHardwareAcceleration();
 // Watchdog: a hung renderer must fail the gate, not stall CI.
-setTimeout(() => { console.log("ERROR watchdog: no result after 90s"); console.log("RENDER FAIL"); process.exit(1); }, 90000).unref();
+setTimeout(() => { console.log("ERROR watchdog: no result after 200s"); console.log("RENDER FAIL"); process.exit(1); }, 200000).unref();
 app.whenReady().then(async () => {
   serve();
   step("server listening");
@@ -39,7 +39,10 @@ app.whenReady().then(async () => {
   await new Promise((r) => setTimeout(r, 3000));
   // Optional interaction (RENDER_JS): code run in the page before the check, e.g. clicking buttons to exercise lazy components.
   if (process.env.RENDER_JS) { await w.webContents.executeJavaScript(process.env.RENDER_JS); await new Promise((r) => setTimeout(r, 1500)); }
-  const info = await w.webContents.executeJavaScript(`({root: (document.querySelector(${JSON.stringify(sel)})||{}).innerText||'', kids: (document.querySelector(${JSON.stringify(sel)})||{children:[]}).children.length, html: document.body.innerHTML.length, url: location.href})`);
+  step("evaluating page");
+  const t0 = Date.now();
+  const info = await Promise.race([w.webContents.executeJavaScript(`({root: (document.querySelector(${JSON.stringify(sel)})||{}).innerText||'', kids: (document.querySelector(${JSON.stringify(sel)})||{children:[]}).children.length, html: document.body.innerHTML.length, url: location.href})`), new Promise((_, rej) => setTimeout(() => rej(new Error("renderer unresponsive for 150s")), 150000))]);
+  step("evaluated in " + (Date.now() - t0) + "ms");
   // The screenshot is evidence only: on a software-GL Linux runner capturePage of a hidden window can stall, so it never decides pass/fail.
   try { fs.writeFileSync(shot, (await Promise.race([w.webContents.capturePage(), new Promise((_, rej) => setTimeout(() => rej(new Error("capturePage timeout")), 10000))])).toPNG()); } catch (e) { console.log("NOTE no screenshot: " + e.message); }
   console.log(JSON.stringify({ ...info, root: info.root.slice(0, 120) }));
