@@ -20,7 +20,10 @@ app.whenReady().then(() => srv.listen(0, "127.0.0.1", async () => {
   w.webContents.on("console-message", (_e, level, msg, line, src) => { if (level >= 3 && !/Failed to load resource|ERR_CONNECTION|net::/.test(msg)) errors.push(`console: ${msg} (${src}:${line})`); });
   w.webContents.on("render-process-gone", (_e, d) => errors.push("renderer gone: " + d.reason));
   step("window created");
-  await w.loadURL(`http://127.0.0.1:${srv.address().port}/`);
+  // Do not await loadURL: it waits for every subresource, and one stalled request would hang the gate. dom-ready plus a fixed settle time is enough.
+  const ready = new Promise((r) => w.webContents.once("dom-ready", r));
+  w.loadURL(`http://127.0.0.1:${srv.address().port}/`).catch((e) => errors.push("load: " + e.message));
+  await Promise.race([ready, new Promise((r) => setTimeout(r, 30000))]);
   step("page loaded");
   await new Promise((r) => setTimeout(r, 3000));
   // Optional interaction (RENDER_JS): code run in the page before the check, e.g. clicking buttons to exercise lazy components.
