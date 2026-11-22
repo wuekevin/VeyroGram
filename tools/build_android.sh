@@ -25,6 +25,9 @@ for p in "$root"/apps/android/patches/*.patch; do
   git -C "$work" apply --index "$p" || { echo "patch $(basename "$p") does not apply to $pin" >&2; git -C "$up" worktree remove --force "$work" >/dev/null 2>&1; exit 1; }
   n=$((n+1))
 done
+# Whole-file overlays and deletions are kept out of the patch so the removed vendor credentials never appear in this repo.
+rm -f "$work/app/google-services.json"
+[ ! -d "$root/apps/android/overlay" ] || cp -R "$root/apps/android/overlay/." "$work/"
 echo "patched android at ${pin:0:8} with $n patch(es)"
 python3 -I "$root/tools/check_android.py" "$work" || exit 1
 cd "$work"

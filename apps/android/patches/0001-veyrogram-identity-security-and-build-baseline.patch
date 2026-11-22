@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle b/app/build.gradle
-index 104431c..8a49eeb 100644
+index 104431c..1957e82 100644
 --- a/app/build.gradle
 +++ b/app/build.gradle
 @@ -2,33 +2,18 @@ plugins {
@@ -54,42 +54,14 @@ index 104431c..8a49eeb 100644
      compileSdk rootProject.ext.compileSdkVersion
      aaptOptions.cruncherEnabled = false
      aaptOptions.useNewCruncher = false
-diff --git a/app/google-services.json b/app/google-services.json
-deleted file mode 100644
-index e574f63..0000000
---- a/app/google-services.json
-+++ /dev/null
-@@ -1,29 +0,0 @@
--{
--  "project_info": {
--    "project_number": "232134567764",
--    "project_id": "tsdddemo",
--    "storage_bucket": "tangsengdaodaoandroid.appspot.com"
--  },
--  "client": [
--    {
--      "client_info": {
--        "mobilesdk_app_id": "1:232134567764:android:4454b65123eds3092326735",
--        "android_client_info": {
--          "package_name": "com.test.ts"
--        }
--      },
--      "oauth_client": [],
--      "api_key": [
--        {
--          "current_key": "AIzaSyDOVB7GuZnDXIZWT-qaIiCrQU4qvfwWKGU"
--        }
--      ],
--      "services": {
--        "appinvite_service": {
--          "other_platform_oauth_client": []
--        }
--      }
--    }
--  ],
--  "configuration_version": "1"
--}
-\ No newline at end of file
+@@ -58,6 +43,7 @@ android {
+         targetSdkVersion rootProject.ext.targetSdkVersion
+         versionCode 1
+         versionName "1.0"
++        buildConfigField 'String', 'VG_API_BASE_URL', "\"${findProperty('vgApiBaseUrl') ?: 'http://127.0.0.1:8080'}\""
+ 
+         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+         vectorDrawables {
 diff --git a/app/src/main/java/com/test/demo2/MainActivity.kt b/app/src/main/java/com/test/demo2/MainActivity.kt
 index 1564c91..db29147 100644
 --- a/app/src/main/java/com/test/demo2/MainActivity.kt
@@ -106,18 +78,30 @@ index 1564c91..db29147 100644
  
  class MainActivity : WKBaseActivity<ActivityMainBinding>() {
 diff --git a/app/src/main/java/com/test/demo2/TSApplication.kt b/app/src/main/java/com/test/demo2/TSApplication.kt
-index 6b250ba..fa57ae8 100644
+index 6b250ba..2077d52 100644
 --- a/app/src/main/java/com/test/demo2/TSApplication.kt
 +++ b/app/src/main/java/com/test/demo2/TSApplication.kt
-@@ -35,7 +35,7 @@ import com.chat.uikit.TabActivity
+@@ -35,7 +35,8 @@ import com.chat.uikit.TabActivity
  import com.chat.uikit.WKUIKitApplication
  import com.chat.uikit.chat.manager.WKIMUtils
  import com.chat.uikit.user.service.UserModel
 -import com.test.ts.R
++import app.veyrogram.android.BuildConfig
 +import app.veyrogram.android.R
  import kotlin.system.exitProcess
  
  class TSApplication : MultiDexApplication() {
+@@ -111,7 +112,9 @@ class TSApplication : MultiDexApplication() {
+         if (TextUtils.isEmpty(apiURL)) {
+ //            apiURL = ""
+ //            WKApiConfig.initBaseURL(apiURL)
+-            throw IllegalStateException("api_base_url 未设置，请先配置接口地址")
++            // VeyroGram: no vendor default and no crash on first launch. The build-time default can be
++            // overridden with -PvgApiBaseUrl=https://api.example.com; users can still change it on the login screen.
++            WKApiConfig.initBaseURLIncludeIP(BuildConfig.VG_API_BASE_URL)
+         } else {
+             WKApiConfig.initBaseURLIncludeIP(apiURL)
+         }
 diff --git a/app/src/main/res/values-en/strings.xml b/app/src/main/res/values-en/strings.xml
 index f5196f6..a2d7f36 100644
 --- a/app/src/main/res/values-en/strings.xml
@@ -292,57 +276,6 @@ index d18e8dd..fd3af28 100644
  }
  android {
      compileSdk rootProject.ext.compileSdkVersion
-diff --git a/wkpush/src/main/AndroidManifest.xml b/wkpush/src/main/AndroidManifest.xml
-index d4bab5a..ebafe18 100644
---- a/wkpush/src/main/AndroidManifest.xml
-+++ b/wkpush/src/main/AndroidManifest.xml
-@@ -95,7 +95,7 @@
-         <!--华为-->
-         <meta-data
-             android:name="com.huawei.hms.client.appid"
--            android:value="108677047" />
-+            android:value="" />
- 
-         <!--vivo-->
-         <meta-data
-@@ -103,11 +103,11 @@
-             android:value="484" />
-         <meta-data
-             android:name="com.vivo.push.api_key"
--            android:value="d14dac0803bc8470d9ace9e29657a160" />
-+            android:value="" />
- 
-         <meta-data
-             android:name="com.vivo.push.app_id"
--            android:value="105660344" />
-+            android:value="" />
- 
-         <!--push应用定义消息receiver声明-->
-         <receiver
-diff --git a/wkpush/src/main/java/com/chat/push/PushKeys.java b/wkpush/src/main/java/com/chat/push/PushKeys.java
-index c5fc675..4ae531b 100644
---- a/wkpush/src/main/java/com/chat/push/PushKeys.java
-+++ b/wkpush/src/main/java/com/chat/push/PushKeys.java
-@@ -1,10 +1,14 @@
- package com.chat.push;
- 
-+/**
-+ * VeyroGram: the upstream vendor push credentials were removed. Fill these from your own
-+ * vendor consoles (never commit real values); empty values keep the vendor channels off.
-+ */
- public class PushKeys {
- 
--    public static final String xiaoMiAppID = "2882303761520252187";
--    public static final String xiaoMiAppKey = "5302025297187";
--    public static final String huaweiAPPID = "108677047";
--    public static final String oppoAppKey = "df1fd1874702472d973cbe3ffea25c66";
--    public static final String oppoAppSecret = "6739dd8f1150469680fc1a2ba1697a12";
-+    public static final String xiaoMiAppID = "";
-+    public static final String xiaoMiAppKey = "";
-+    public static final String huaweiAPPID = "";
-+    public static final String oppoAppKey = "";
-+    public static final String oppoAppSecret = "";
- }
 diff --git a/wkpush/src/main/java/com/chat/push/WKPushApplication.java b/wkpush/src/main/java/com/chat/push/WKPushApplication.java
 index 7cbfe02..341ecbd 100644
 --- a/wkpush/src/main/java/com/chat/push/WKPushApplication.java

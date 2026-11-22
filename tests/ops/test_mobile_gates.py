@@ -83,5 +83,28 @@ empty = tempfile.mkdtemp(); write(empty, "deps.txt", "nothing here\n")
 r = subprocess.run([sys.executable, "-I", os.path.join(ROOT, "tools", "audit_gradle.py"), os.path.join(empty, "deps.txt")], capture_output=True, text=True)
 check("gradle audit: an empty/wrong dependency listing is refused", r.returncode == 2)
 
+# ---- iOS policy ---------------------------------------------------------------------------------------------------------
+def ios_tree():
+    t = tempfile.mkdtemp()
+    write(t, "TangSengDaoDao/AppDelegate.m", "#define VG_SERVER_IP @\"127.0.0.1:8080\"\n")
+    write(t, "Pods/AFNetworking/AFNetworking/A.m", "#import <netinet/in.h>\n")
+    return t
+
+
+t = ios_tree(); check("ios: a clean tree passes", run("check_ios.py", t).returncode == 0)
+t = ios_tree(); write(t, "TangSengDaoDao/AppDelegate.m", '#define SERVER_IP @"api.botgate.cn"\n')
+r = run("check_ios.py", t); check("ios: the vendor API host is refused", r.returncode == 1 and "vendor API host" in r.stdout)
+t = ios_tree(); write(t, "X.xcodeproj/project.pbxproj", "DEVELOPMENT_TEAM = H8PU463W68;\n")
+r = run("check_ios.py", t); check("ios: the vendor team id is refused", r.returncode == 1)
+t = ios_tree(); write(t, "X.xcodeproj/project.pbxproj", "PRODUCT_BUNDLE_IDENTIFIER = com.xinbida.tangsengdaodao;\n")
+r = run("check_ios.py", t); check("ios: the vendor bundle id is refused", r.returncode == 1)
+t = ios_tree(); write(t, "Pods/AFNetworking/AFNetworking/A.m", "#import <netinet6/in6.h>\n")
+r = run("check_ios.py", t); check("ios: AFNetworking private header import is refused", r.returncode == 1 and "private header" in r.stdout)
+t = ios_tree(); write(t, "Modules/WuKongBase/WuKongBase/Classes/WKApp.m", '[Bugly startWithAppId:@"82f8dd98ff"];\n')
+r = run("check_ios.py", t); check("ios: the vendor Bugly app id is refused", r.returncode == 1)
+t = ios_tree(); write(t, "Modules/WuKongBase/WuKongBase/Bugly.framework/Bugly", "x")
+r = run("check_ios.py", t); check("ios: the prebuilt Bugly framework is refused", r.returncode == 1 and "prebuilt" in r.stdout)
+
+
 print(f"\n{len(fails)} FAILED" if fails else "\nall mobile gate tests passed")
 sys.exit(1 if fails else 0)

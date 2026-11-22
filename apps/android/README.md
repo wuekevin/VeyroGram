@@ -10,6 +10,8 @@
 - 构建：去掉 `jcenter()` 与 `mvnrepository.com` 仓库；Gradle wrapper 增加 `distributionSha256Sum`；给每个模块补 JUnit（上游的占位单测原本编译不过）；新增 3 个单测（身份、推送凭据为空、fastjson 兼容 API）。
 - 应用名 `demo` → `VeyroGram`。
 
+说明：删除 `google-services.json`、重写 `PushKeys.java` 与 `wkpush` 的 `AndroidManifest.xml` 不放进补丁（补丁会带出被删掉的厂商凭据旧值），改由 `build_android.sh` 删除文件并覆盖 `apps/android/overlay/`。
+
 ## 门禁
 `tools/check_android.py`（源码策略）、`tools/audit_gradle.py`（OSV，高危/严重为 0，未知严重度按高危处理）、`tests/ops/test_mobile_gates.py`（负面测试）。
 

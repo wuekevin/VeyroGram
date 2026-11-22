@@ -5,7 +5,7 @@ that breaks Xcode 26 builds. Pods are vendored in the upstream tree, so the chec
 import pathlib, sys
 
 BAD = {"H8PU463W68": "vendor development team id", "com.xinbida": "vendor bundle id", "api.botgate.cn": "vendor API host",
-       "applinks:githubim.com": "vendor associated domain", "<string>botgate</string>": "vendor URL scheme"}
+       "applinks:githubim.com": "vendor associated domain", "82f8dd98ff": "vendor Bugly app id", "#import <Bugly/Bugly.h>": "Bugly crash reporter", "<string>botgate</string>": "vendor URL scheme"}
 SCAN = {".pbxproj", ".plist", ".entitlements", ".m", ".h", ".swift"}
 
 
@@ -23,6 +23,9 @@ def main() -> int:
                     bad.append(f"{rel}: {why} ({k})")
         if rel.startswith("Pods/AFNetworking/") and p.suffix == ".m" and "netinet6/in6.h" in p.read_text(errors="replace"):
             bad.append(f"{rel}: private header netinet6/in6.h (fails under Xcode 26)")
+    for d in ("Modules/WuKongBase/WuKongBase/Bugly.framework", "Pods/YYImage/Vendor/WebP.framework"):
+        if (tree / d).exists():
+            bad.append(f"{d}: prebuilt binary must be removed")
     for b in sorted(set(bad)):
         print("FAIL", b)
     print(f"ios policy: {len(set(bad))} problem(s)")

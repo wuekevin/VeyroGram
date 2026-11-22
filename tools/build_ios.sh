@@ -14,6 +14,9 @@ git -C "$up" worktree add --detach -q "$work" "$pin"
 for p in "$root"/apps/ios/patches/*.patch; do
   git -C "$work" apply --index "$p" || { echo "patch $(basename "$p") does not apply" >&2; git -C "$up" worktree remove --force "$work" >/dev/null 2>&1; exit 1; }
 done
+# Prebuilt binaries removed (kept out of the patch): Tencent Bugly (crash reporting to a vendor account) and YYImage's bundled 2015 WebP.framework
+# (replaced by the libwebp pod, see patch).
+rm -rf "$work/Modules/WuKongBase/WuKongBase/Bugly.framework" "$work/Pods/YYImage/Vendor/WebP.framework"
 python3 -I "$root/tools/check_ios.py" "$work" || exit 1
 cd "$work"
 dd="$work/DerivedData"
