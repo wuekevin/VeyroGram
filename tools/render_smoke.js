@@ -10,6 +10,8 @@ const srv = http.createServer((q, r) => {
   r.writeHead(200, { "content-type": types[path.extname(p)] || "application/octet-stream" }); fs.createReadStream(p).pipe(r);
 });
 const errors = [];
+// Watchdog: a hung renderer must fail the gate, not stall CI.
+setTimeout(() => { console.log("ERROR watchdog: no result after 90s"); console.log("RENDER FAIL"); process.exit(1); }, 90000).unref();
 app.whenReady().then(() => srv.listen(0, "127.0.0.1", async () => {
   const w = new BrowserWindow({ show: false, width: 1280, height: 800, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
   w.webContents.on("console-message", (_e, level, msg, line, src) => { if (level >= 3 && !/Failed to load resource|ERR_CONNECTION|net::/.test(msg)) errors.push(`console: ${msg} (${src}:${line})`); });
@@ -19,7 +21,8 @@ app.whenReady().then(() => srv.listen(0, "127.0.0.1", async () => {
   // Optional interaction (RENDER_JS): code run in the page before the check, e.g. clicking buttons to exercise lazy components.
   if (process.env.RENDER_JS) { await w.webContents.executeJavaScript(process.env.RENDER_JS); await new Promise((r) => setTimeout(r, 1500)); }
   const info = await w.webContents.executeJavaScript(`({root: (document.querySelector(${JSON.stringify(sel)})||{}).innerText||'', kids: (document.querySelector(${JSON.stringify(sel)})||{children:[]}).children.length, html: document.body.innerHTML.length, url: location.href})`);
-  fs.writeFileSync(shot, (await w.webContents.capturePage()).toPNG());
+  // The screenshot is evidence only: on a software-GL Linux runner capturePage of a hidden window can stall, so it never decides pass/fail.
+  try { fs.writeFileSync(shot, (await Promise.race([w.webContents.capturePage(), new Promise((_, rej) => setTimeout(() => rej(new Error("capturePage timeout")), 10000))])).toPNG()); } catch (e) { console.log("NOTE no screenshot: " + e.message); }
   console.log(JSON.stringify({ ...info, root: info.root.slice(0, 120) }));
   if (!info.kids) errors.push("root is empty");
   errors.forEach((e) => console.log("ERROR " + e));

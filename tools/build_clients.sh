@@ -51,7 +51,7 @@ else
 fi
 if [ -n "${VG_RENDER_ELECTRON:-}" ]; then  # render smoke: load the build in a hidden Electron, fail on app errors / empty page, keep a screenshot
   sel='#root'; [ "$which" = manager ] && sel='#app'
-  "$VG_RENDER_ELECTRON" ${VG_ELECTRON_FLAGS:-} "$root/tools/render_smoke.js" "$out" "$work/render-$which.png" "$sel" 2>&1 | grep -E '^(\{|ERROR|RENDER)'
+  "$VG_RENDER_ELECTRON" ${VG_ELECTRON_FLAGS:-} "$root/tools/render_smoke.js" "$out" "$work/render-$which.png" "$sel" 2>&1 | grep -E '^(\{|ERROR|RENDER|NOTE)'
   [ "${PIPESTATUS[0]}" = 0 ] || { echo "render smoke failed" >&2; exit 1; }
 fi
 sum=$(cd "$out" && find . -type f ! -name '*.gz' -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1)
