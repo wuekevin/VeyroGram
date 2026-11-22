@@ -31,4 +31,5 @@ VG_ELECTRON_SMOKE=1 bash tools/build_clients.sh web …       # 另外下载 Ele
 - 安全公告：高危/严重为 0；`moderate` 剩 5 条（`glob`/`minimatch` 需跨大版本、`@babel/runtime@7.4.5` 被上游精确锁定等），不在门禁内。
 - npm 依赖有许可证门禁与 CycloneDX SBOM（`tools/npm_supply.py`，1554 个包）。`keypair`/`node-forge` 是“BSD 或 GPL”双许可，按 BSD 取用。
 - Tauri 目录（`src-tauri`）未升级也未纳入构建，更新端点指向保留域名 `updates.invalid`；桌面端选 Electron。
+- **没有内容安全策略（CSP）**：渲染冒烟时 Electron 报“Insecure Content-Security-Policy”，Web 的 `index.html` 没有 CSP。这次没加（加严格 CSP 会影响上游内联脚本与第三方资源，需要逐项验证），已记为后续加固项。
 - CI 的 Electron 烟雾/渲染测试在 Linux 上用 `--no-sandbox` + xvfb（runner 没有 SUID 沙箱）；真正的沙箱在 macOS 上跑过。
