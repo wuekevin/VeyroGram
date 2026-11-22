@@ -4,17 +4,24 @@ const { app, BrowserWindow } = require("electron");
 const http = require("http"), fs = require("fs"), path = require("path");
 const [dir, shot, sel = "#root"] = process.argv.slice(2);
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".mp3": "audio/mpeg", ".ico": "image/x-icon", ".woff2": "font/woff2" };
-const srv = http.createServer((q, r) => {
-  let p = path.join(dir, decodeURIComponent(q.url.split("?")[0]));
-  if (!p.startsWith(path.resolve(dir)) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) p = path.join(dir, "index.html");
-  r.writeHead(200, { "content-type": types[path.extname(p)] || "application/octet-stream" }); fs.createReadStream(p).pipe(r);
-});
+// Static server runs in a separate process (ELECTRON_RUN_AS_NODE): serving from the Electron main process froze the main thread on the Linux CI runner.
+const SERVER = `const http=require("http"),fs=require("fs"),path=require("path");const dir=path.resolve(process.argv[1]);const types=${JSON.stringify(types)};
+http.createServer((q,r)=>{let p=path.join(dir,decodeURIComponent(q.url.split("?")[0]));if(!p.startsWith(dir)||!fs.existsSync(p)||fs.statSync(p).isDirectory())p=path.join(dir,"index.html");
+r.writeHead(200,{"content-type":types[path.extname(p)]||"application/octet-stream"});fs.createReadStream(p).pipe(r)}).listen(0,"127.0.0.1",function(){console.log("PORT "+this.address().port)});`;
+function startServer() {
+  return new Promise((resolve, reject) => {
+    const c = require("child_process").spawn(process.execPath, ["-e", SERVER, dir], { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdio: ["ignore", "pipe", "inherit"] });
+    c.stdout.on("data", (d) => { const m = /PORT (\d+)/.exec(String(d)); if (m) resolve({ port: +m[1], child: c }); });
+    c.on("error", reject); setTimeout(() => reject(new Error("static server did not start")), 15000);
+  });
+}
 const errors = [];
 const step = (m) => console.log("STEP " + m);
 app.disableHardwareAcceleration();
 // Watchdog: a hung renderer must fail the gate, not stall CI.
 setTimeout(() => { console.log("ERROR watchdog: no result after 90s"); console.log("RENDER FAIL"); process.exit(1); }, 90000).unref();
-app.whenReady().then(() => srv.listen(0, "127.0.0.1", async () => {
+app.whenReady().then(async () => {
+  const srv = await startServer();
   step("server listening");
   const w = new BrowserWindow({ show: false, width: 1280, height: 800, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
   w.webContents.on("console-message", (_e, level, msg, line, src) => { if (level >= 3 && !/Failed to load resource|ERR_CONNECTION|net::/.test(msg)) errors.push(`console: ${msg} (${src}:${line})`); });
@@ -22,7 +29,7 @@ app.whenReady().then(() => srv.listen(0, "127.0.0.1", async () => {
   step("window created");
   // Do not await loadURL: it waits for every subresource, and one stalled request would hang the gate. dom-ready plus a fixed settle time is enough.
   const ready = new Promise((r) => w.webContents.once("dom-ready", r));
-  w.loadURL(`http://127.0.0.1:${srv.address().port}/`).catch((e) => errors.push("load: " + e.message));
+  w.loadURL(`http://127.0.0.1:${srv.port}/`).catch((e) => errors.push("load: " + e.message));
   await Promise.race([ready, new Promise((r) => setTimeout(r, 30000))]);
   step("page loaded");
   await new Promise((r) => setTimeout(r, 3000));
@@ -34,5 +41,5 @@ app.whenReady().then(() => srv.listen(0, "127.0.0.1", async () => {
   console.log(JSON.stringify({ ...info, root: info.root.slice(0, 120) }));
   if (!info.kids) errors.push("root is empty");
   errors.forEach((e) => console.log("ERROR " + e));
-  console.log(errors.length ? "RENDER FAIL" : "RENDER OK"); app.exit(errors.length ? 1 : 0);
-}));
+  console.log(errors.length ? "RENDER FAIL" : "RENDER OK"); srv.child.kill(); app.exit(errors.length ? 1 : 0);
+});
