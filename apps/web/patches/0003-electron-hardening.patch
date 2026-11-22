@@ -398,10 +398,10 @@ index 0000000..27646a2
 +  require(path.join(out, "main", "security.js")).installSecurityHandlers();
 +  const w2 = new BrowserWindow({ show: false, webPreferences: prefs });
 +  await w2.loadURL("data:text/html,<html><body>x</body></html>");
-+  await w2.webContents.executeJavaScript("location.href='https://evil.example/'").catch(() => {});
++  await w2.webContents.executeJavaScript("location.href='http://evil.example/'").catch(() => {});
 +  await new Promise((r) => setTimeout(r, 800));
 +  check("navigation away from app content blocked", w2.webContents.getURL().startsWith("data:"), w2.webContents.getURL());
-+  const popup = await w2.webContents.executeJavaScript("window.open('https://evil.example/') === null");
++  const popup = await w2.webContents.executeJavaScript("window.open('http://evil.example/') === null");
 +  check("window.open denied", popup === true);
 +  check("only the original windows exist (no popup)", BrowserWindow.getAllWindows().length === 2);
 +
