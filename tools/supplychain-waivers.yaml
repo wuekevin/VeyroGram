@@ -1,0 +1,3 @@
+# Approved exemptions from the licence gate (Story 1.24). Empty on purpose.
+# An entry needs: module, reason, approved_by, expires (YYYY-MM-DD). An expired entry stops applying and the build fails again.
+waivers: []

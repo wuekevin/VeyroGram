@@ -121,7 +121,7 @@ graph TD
 ### AD-18 — Upstream is pinned and isolated
 - **Binds:** NFR-5, R-14, R-16.
 - **Prevents:** accidental upstream drift; mirror/registry supply-chain risk.
-- **Rule:** forks keep an `upstream` remote and record pinned SHAs; WuKongIM is pinned to a tagged version and built with go1.26.10; npm/pnpm/Gradle/Pods resolve only from official registries with integrity hashes; no `npmmirror`/`taobao` URLs. WuKongIM is currently audited at an untagged `main` commit (7b810e08; `v3.0.0-beta.27` exists) — pin to a SHA now and to a release tag when one is chosen; planned fork patches (webhook HMAC signing) are tracked with upstream remote retained. The `imgw` adapter has contract tests against the pinned WuKongIM; upstream tests are not a regression baseline (R-16).
+- **Rule:** forks keep an `upstream` remote and record pinned SHAs; WuKongIM is pinned to a tagged version and built with go1.26.x (currently go1.26.11); npm/pnpm/Gradle/Pods resolve only from official registries with integrity hashes; no `npmmirror`/`taobao` URLs. WuKongIM is currently audited at an untagged `main` commit (7b810e08; `v3.0.0-beta.27` exists) — pin to a SHA now and to a release tag when one is chosen; planned fork patches (webhook HMAC signing) are tracked with upstream remote retained. The `imgw` adapter has contract tests against the pinned WuKongIM; upstream tests are not a regression baseline (R-16).
 
 ### AD-19 — Search honors read permissions
 - **Binds:** FR-33, FR-41.
@@ -167,7 +167,7 @@ graph TD
 
 | Name | Version |
 | --- | --- |
-| Go (business services) | 1.26.x (pin exact patch in CI; WuKongIM requires go1.26.10) |
+| Go (business services) | 1.26.x (pin exact patch in CI; WuKongIM needs 1.26.x - it fails to build on 1.27 - and builds and passes the contract tests on go1.26.11, which fixes GO-2026-6859 in net/http) |
 | WuKongIM | pinned SHA (audited: 7b810e08, untagged `main`; latest tag v3.0.0-beta.27 — beta risk); move to a tag when selected |
 | MySQL | **8.0 (user decision, ADR-0002)** — baseline 8.0.46; 8.0 is past EOL (April 2026), risk accepted (R-31); SQL uses 8.0 syntax only |
 | Redis | **7.x (user decision)** — use only commands available in 7.x (no Redis 8–only features); pin the exact 7.x patch in Phase 2 and record its license (7.2.x is the last BSD-licensed line; 7.4+ is RSALv2/SSPLv1 [verify]) |

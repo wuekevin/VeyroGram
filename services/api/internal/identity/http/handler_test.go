@@ -135,7 +135,7 @@ func newEnv(t *testing.T, trusted ...string) *env {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	e.authCfg = authn.Config{Ring: ring, Deny: dl, Now: func() time.Time { return e.now }, OnDegraded: func() { e.degraded++ }}
+	e.authCfg = authn.Config{Ring: ring, Tenant: e.svc.Tenant, Deny: dl, Now: func() time.Time { return e.now }, OnDegraded: func() { e.degraded++ }}
 	(&Handler{Svc: e.svc, Trusted: tr, Auth: authn.Require(e.authCfg)}).Mount(mux)
 	e.h = httpx.RequestID(mux)
 	e.query = func(q string, a ...any) int {

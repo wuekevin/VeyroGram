@@ -99,3 +99,33 @@ func TestRedisFailureDegradesToTTLAndAlerts(t *testing.T) {
 	}
 	_ = strconv.Itoa
 }
+
+// AD-10: a token that is validly signed but names another tenant is refused, even though the business modules would otherwise treat it as one of ours.
+func TestRequireRefusesATokenForAnotherTenant(t *testing.T) {
+	ring, deny, now := setup(t)
+	reached := 0
+	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached++ })
+	sign := func(tenant uint64) string {
+		tok, err := ring.Sign(token.Claims{Subject: "u1", Device: "9", Class: "app", Tenant: tenant, Expires: now.Add(time.Minute).Unix()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return "Bearer " + tok
+	}
+	def := Require(Config{Ring: ring, Deny: deny, Now: func() time.Time { return now }})(next) // Tenant unset means tenant 1
+	if w := call(def, sign(1)); w.Code != 200 || reached != 1 {
+		t.Fatalf("tenant 1 on a default deployment: %d reached=%d", w.Code, reached)
+	}
+	for _, tn := range []uint64{0, 2, 999} {
+		if w := call(def, sign(tn)); w.Code != 401 || reached != 1 {
+			t.Fatalf("tenant %d token on a tenant-1 deployment: %d reached=%d, want 401 and no handler call", tn, w.Code, reached)
+		}
+	}
+	seven := Require(Config{Ring: ring, Tenant: 7, Deny: deny, Now: func() time.Time { return now }})(next)
+	if w := call(seven, sign(7)); w.Code != 200 {
+		t.Fatalf("tenant 7 on a tenant-7 deployment: %d", w.Code)
+	}
+	if w := call(seven, sign(1)); w.Code != 401 {
+		t.Fatalf("tenant 1 token on a tenant-7 deployment: %d", w.Code)
+	}
+}

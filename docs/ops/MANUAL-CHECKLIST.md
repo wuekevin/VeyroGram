@@ -37,11 +37,11 @@
 
 ### B1. main 分支保护（让 CI 变成合并门禁）
 - **注意：** 私有仓库的分支保护/Rulesets 需要 GitHub Pro/Team 套餐；免费版会返回 403 `Upgrade to GitHub Pro`。
-- **网页：** Settings → Branches → Add branch ruleset：目标 `main`；勾选 Require a pull request before merging、Require status checks to pass（添加 `go`、`infra`、`alerts`、`design`，以及 design-checks 的任务名）、Block force pushes、Restrict deletions。
+- **网页：** Settings → Branches → Add branch ruleset：目标 `main`；勾选 Require a pull request before merging、Require status checks to pass（添加 `go`、`infra`、`alerts`、`supply-chain`、`design`（Story 1.24 新增 `supply-chain`），以及 design-checks 的任务名）、Block force pushes、Restrict deletions。
 - **命令行（有权限时）：**
   ```
   gh api -X PUT repos/wuekevin/VeyroGram/branches/main/protection --input - <<'JSON'
-  {"required_status_checks":{"strict":true,"contexts":["go","infra","alerts","design"]},
+  {"required_status_checks":{"strict":true,"contexts":["go","infra","alerts","supply-chain","design"]},
    "enforce_admins":true,"required_pull_request_reviews":{"required_approving_review_count":1},
    "restrictions":null,"allow_force_pushes":false,"allow_deletions":false}
   JSON
@@ -120,7 +120,7 @@ cp infrastructure/systemd/veyrogram-sync-purge.service infrastructure/systemd/ve
 
 ### C5. WuKongIM 上线与硬化
 ```
-bash tools/build_wukongim.sh /tmp/wukongim                       # 在有 Go 1.26.10 的机器上（会应用补丁）
+bash tools/build_wukongim.sh /tmp/wukongim                       # 在有 Go 1.26.11 的机器上（会应用补丁）
 install -d /opt/veyrogram/wukongim/releases/v1 /opt/veyrogram/wukongim/releases/v1/tools
 install -m 0755 /tmp/wukongim /opt/veyrogram/wukongim/releases/v1/wukongim
 install -m 0644 tools/wukongim_config_check.py /opt/veyrogram/wukongim/releases/v1/tools/

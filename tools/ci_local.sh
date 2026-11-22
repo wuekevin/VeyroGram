@@ -2,7 +2,7 @@
 # Runs every merge gate that CI runs, locally. Exit non-zero if any fails. (Mirrors .github/workflows/ci.yml)
 set -uo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd); cd "$root"
-export GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.10}
+export GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.11}
 fail=0; step() { echo; echo "== $1"; shift; if "$@"; then echo "   PASS"; else echo "   FAIL"; fail=1; fi; }
 step "go fmt (services/api)"            bash -c 'cd services/api && test -z "$(gofmt -l .)"'
 step "go vet"                           bash -c 'cd services/api && go vet ./...'
@@ -11,6 +11,16 @@ step "cross-build linux/amd64 (production target)" bash -c 'cd services/api && G
 step "go test -race (incl. AD-1 import-direction check)" bash -c 'cd services/api && go test -race -count=1 ./... && { [ -n "${VG_TEST_MYSQL_DSN:-}" ] || echo "NOTE: VG_TEST_MYSQL_DSN unset - MySQL integration tests were SKIPPED"; } && { [ -n "${VG_TEST_WUKONGIM_BIN:-}" ] || echo "NOTE: VG_TEST_WUKONGIM_BIN unset - WuKongIM contract tests were SKIPPED (build the patched binary with tools/build_wukongim.sh)"; }'
 step "infra policy lint"                python3 -I tools/lint_infra.py
 step "infra lint unit tests"            python3 -I tests/ops/test_lint_infra.py
+step "supply-chain gates (tests)"      python3 -I tests/ops/test_supplychain.py
+step "SBOM (CycloneDX)"                 python3 -I tools/supplychain.py sbom -o "${TMPDIR:-/tmp}/veyrogram-api.cdx.json"
+step "licence gate"                     python3 -I tools/supplychain.py licenses
+step "no third-party mirrors"           python3 -I tools/supplychain.py mirrors
+step "secret scan"                      python3 -I tools/secret_scan.py
+if [ -x "$(cd services/api && go env GOPATH)/bin/govulncheck" ]; then
+  step "govulncheck (dependencies and standard library)" bash -c 'cd services/api && "$(go env GOPATH)/bin/govulncheck" ./...'
+else
+  echo "NOTE: govulncheck not installed - vulnerability scan SKIPPED (go install golang.org/x/vuln/cmd/govulncheck@v1.1.4)"
+fi
 step "OpenAPI diff gate (tests)"        python3 -I tests/ops/test_openapi_diff.py
 step "upstream compat guard"             python3 -I tools/check_upstream_compat.py
 step "upstream compat guard (tests)"     python3 -I tests/ops/test_upstream_compat.py

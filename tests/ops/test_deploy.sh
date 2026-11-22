@@ -28,7 +28,7 @@ version_running() { curl -fsS --max-time 2 "$VG_READY_URL" >/dev/null 2>&1 && "$
 sha() { (sha256sum "$1" 2>/dev/null || shasum -a 256 "$1") | awk '{print $1}'; }
 
 echo "building real binary v1/v2"
-(cd "$root/services/api" && GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.10} go build -o "$tmp/api-v1" -ldflags "-X main.version=v1" ./cmd/api && GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.10} go build -o "$tmp/api-v2" -ldflags "-X main.version=v2" ./cmd/api) || { echo "build failed"; exit 1; }
+(cd "$root/services/api" && GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.11} go build -o "$tmp/api-v1" -ldflags "-X main.version=v1" ./cmd/api && GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.11} go build -o "$tmp/api-v2" -ldflags "-X main.version=v2" ./cmd/api) || { echo "build failed"; exit 1; }
 for v in v1 v2; do echo "$(sha "$tmp/api-$v")  api-$v" >"$tmp/api-$v.sha256"; done
 
 echo "case 1: first deploy"

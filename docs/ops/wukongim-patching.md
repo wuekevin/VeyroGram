@@ -2,7 +2,7 @@
 
 VeyroGram does not run a stock WuKongIM. The build is **pinned upstream SHA + an ordered patch queue**, built reproducibly by `tools/build_wukongim.sh`:
 
-- Pin: `PIN=` in `tools/build_wukongim.sh` (currently `7b810e08`, built with go1.26.10). The script refuses to build if `upstream/WuKongIM` is at another revision.
+- Pin: `PIN=` in `tools/build_wukongim.sh` (currently `7b810e08`, built with go1.26.11). The script refuses to build if `upstream/WuKongIM` is at another revision.
 - Patches: `patches/wukongim/NNNN-*.patch` (git format-patch), applied in filename order inside a throwaway worktree; a patch that does not apply fails the build.
 - A hosted fork is optional: the patch queue is the source of truth, so no GitHub fork is required to build or to review changes.
 

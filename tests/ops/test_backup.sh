@@ -31,7 +31,7 @@ root_sql() { "$bin/mysql" --defaults-extra-file="$tmp/root.cnf" -N -e "$1"; }
 [[ $(root_sql "SELECT @@log_bin") == 1 ]] || { echo "SKIP: the source MySQL has binary logging off"; exit 0; }
 
 echo "building the real binary and making the key pair (on the 'restore machine')"
-api=$tmp/veyrogram-api; (cd "$root/services/api" && GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.10} go build -o "$api" ./cmd/api) || { echo "build failed"; exit 1; }
+api=$tmp/veyrogram-api; (cd "$root/services/api" && GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.11} go build -o "$api" ./cmd/api) || { echo "build failed"; exit 1; }
 "$api" backup keygen -out-dir "$tmp/keys" >/dev/null || { echo "keygen failed"; exit 1; }
 "$api" backup keygen -out-dir "$tmp/otherkeys" >/dev/null
 check "private key is 0600 and a second keygen refuses to overwrite" "[[ \$(mode $tmp/keys/private.pem) == 600 ]] && ! $api backup keygen -out-dir $tmp/keys >/dev/null 2>&1"

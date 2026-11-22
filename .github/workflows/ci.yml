@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 env:
-  GOTOOLCHAIN: go1.26.10      # WuKongIM requires go1.26.10; keep the business service on the same toolchain
+  GOTOOLCHAIN: go1.26.11      # WuKongIM needs 1.26.x (fails on 1.27); 1.26.11 fixes GO-2026-6859; keep the business service on the same toolchain
 jobs:
   go:
     runs-on: ubuntu-latest
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.26.10', cache-dependency-path: services/api/go.mod }
+        with: { go-version: '1.26.11', cache-dependency-path: services/api/go.mod }
       - name: gofmt
         run: test -z "$(gofmt -l .)"
       - run: go vet ./...
@@ -57,13 +57,38 @@ jobs:
           cd infrastructure/prometheus
           "$RUNNER_TEMP/prometheus-${v}.linux-amd64/promtool" check rules veyrogram-alerts.yml
           "$RUNNER_TEMP/prometheus-${v}.linux-amd64/promtool" test rules veyrogram-alerts.test.yml
+  supply-chain:
+    # Story 1.24: SBOM, vulnerability scan, licence gate, secret scan, mirror ban. Anything found blocks the merge; the only way past a licence finding is an
+    # entry in tools/supplychain-waivers.yaml (reason, approver, expiry), and for a secret finding tools/secret-scan-allow.yaml (one value, one file).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26.11', cache-dependency-path: services/api/go.mod }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pyyaml
+      - run: python3 -I tests/ops/test_supplychain.py
+      - name: SBOM (CycloneDX) of what the build links
+        run: python3 -I tools/supplychain.py sbom -o "$RUNNER_TEMP/veyrogram-api.cdx.json"
+      - uses: actions/upload-artifact@v4
+        with: { name: sbom-veyrogram-api, path: '${{ runner.temp }}/veyrogram-api.cdx.json', retention-days: 90 }
+      - name: licence gate (UNLICENSED, unknown, custom/commercial and copyleft block)
+        run: python3 -I tools/supplychain.py licenses
+      - name: official registries only (no third-party mirrors)
+        run: python3 -I tools/supplychain.py mirrors
+      - name: secret scan
+        run: python3 -I tools/secret_scan.py
+      - name: vulnerability scan (govulncheck, reachability-aware; the Go standard library is included)
+        run: cd services/api && go install golang.org/x/vuln/cmd/govulncheck@v1.1.4 && "$(go env GOPATH)/bin/govulncheck" ./...
   infra:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/setup-go@v5
-        with: { go-version: '1.26.10' }
+        with: { go-version: '1.26.11' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install pyyaml

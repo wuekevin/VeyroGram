@@ -18,5 +18,5 @@ for p in "$root"/patches/wukongim/*.patch; do
   git -C "$tmp/src" apply --index "$p" || { echo "patch $(basename "$p") does not apply to $PIN" >&2; exit 1; }
   n=$((n+1))
 done
-(cd "$tmp/src" && GOTOOLCHAIN=go1.26.10 go build -o "$out" ./cmd/wukongim)
+(cd "$tmp/src" && GOTOOLCHAIN=${WK_GOTOOLCHAIN:-go1.26.11} go build -o "$out" ./cmd/wukongim)
 echo "built WuKongIM $PIN + $n patch(es) -> $out"

@@ -30,6 +30,7 @@ func WithClaims(ctx context.Context, c token.Claims) context.Context {
 
 type Config struct {
 	Ring       *token.Ring
+	Tenant     uint64        // the tenant this deployment serves (AD-10: single-tenant-deployed); 0 means 1. A token for any other tenant is refused
 	Deny       denylist.List // nil = no deny-list configured: always degraded
 	Now        func() time.Time
 	OnDegraded func() // called when the deny-list cannot be consulted
@@ -53,6 +54,12 @@ func Require(c Config) func(http.Handler) http.Handler {
 				unauthorized(w, r)
 				return
 			}
+			// The business modules scope every query to the deployment's tenant and do not read this claim, so a validly signed token that names another
+			// tenant must stop here instead of being treated as one of ours (AD-10; found by the generated cross-tenant negative test, Story 1.24).
+			if claims.Tenant != c.tenant() {
+				unauthorized(w, r)
+				return
+			}
 			dev, err := strconv.ParseUint(claims.Device, 10, 64)
 			if err != nil {
 				unauthorized(w, r)
@@ -69,6 +76,13 @@ func Require(c Config) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, claims)))
 		})
 	}
+}
+
+func (c Config) tenant() uint64 {
+	if c.Tenant == 0 {
+		return 1
+	}
+	return c.Tenant
 }
 
 func (c Config) degraded() {
