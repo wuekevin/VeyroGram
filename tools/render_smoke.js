@@ -28,7 +28,8 @@ app.whenReady().then(async () => {
   serve();
   step("server listening");
   const w = new BrowserWindow({ show: false, width: 1280, height: 800, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
-  w.webContents.on("console-message", (_e, level, msg, line, src) => { if (level >= 3 && !/Failed to load resource|ERR_CONNECTION|net::/.test(msg)) errors.push(`console: ${msg} (${src}:${line})`); });
+  w.webContents.on("console-message", (_e, level, msg, line, src) => { if (level >= 2) console.log(`CONSOLE[${level}] ${msg.slice(0, 200)} (${src}:${line})`); if (level >= 3 && !/Failed to load resource|ERR_CONNECTION|net::/.test(msg)) errors.push(`console: ${msg} (${src}:${line})`); });
+  w.webContents.on("did-fail-load", (_e, code, desc, url) => { console.log(`LOADFAIL ${code} ${desc} ${url}`); errors.push(`load failed: ${desc} ${url}`); });
   w.webContents.on("render-process-gone", (_e, d) => errors.push("renderer gone: " + d.reason));
   step("window created");
   // Do not await loadURL: it waits for every subresource, and one stalled request would hang the gate. dom-ready plus a fixed settle time is enough.
@@ -41,7 +42,7 @@ app.whenReady().then(async () => {
   if (process.env.RENDER_JS) { await w.webContents.executeJavaScript(process.env.RENDER_JS); await new Promise((r) => setTimeout(r, 1500)); }
   step("evaluating page");
   const t0 = Date.now();
-  const info = await Promise.race([w.webContents.executeJavaScript(`({root: (document.querySelector(${JSON.stringify(sel)})||{}).innerText||'', kids: (document.querySelector(${JSON.stringify(sel)})||{children:[]}).children.length, html: document.body.innerHTML.length, url: location.href})`), new Promise((_, rej) => setTimeout(() => rej(new Error("renderer unresponsive for 150s")), 150000))]);
+  const info = await Promise.race([w.webContents.executeJavaScript(`(()=>{try{return {root: (document.querySelector(${JSON.stringify(sel)})||{}).innerText||'', kids: (document.querySelector(${JSON.stringify(sel)})||{children:[]}).children.length, html: document.body.innerHTML.length, url: location.href}}catch(e){return {root:'',kids:0,html:0,url:String(e)}}})()`).catch((e) => ({ root: '', kids: 0, html: 0, url: 'eval failed: ' + e.message + ' @ ' + w.webContents.getURL() })), new Promise((_, rej) => setTimeout(() => rej(new Error("renderer unresponsive for 150s")), 150000))]);
   step("evaluated in " + (Date.now() - t0) + "ms");
   // The screenshot is evidence only: on a software-GL Linux runner capturePage of a hidden window can stall, so it never decides pass/fail.
   try { fs.writeFileSync(shot, (await Promise.race([w.webContents.capturePage(), new Promise((_, rej) => setTimeout(() => rej(new Error("capturePage timeout")), 10000))])).toPNG()); } catch (e) { console.log("NOTE no screenshot: " + e.message); }
