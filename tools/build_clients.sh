@@ -51,8 +51,10 @@ else
 fi
 if [ -n "${VG_RENDER_ELECTRON:-}" ]; then  # render smoke: load the build in a hidden Electron, fail on app errors / empty page, keep a screenshot
   sel='#root'; [ "$which" = manager ] && sel='#app'
-  "$VG_RENDER_ELECTRON" ${VG_ELECTRON_FLAGS:-} "$root/tools/render_smoke.js" "$out" "$work/render-$which.png" "$sel" 2>&1 | grep -E '^(\{|ERROR|RENDER|NOTE)'
-  [ "${PIPESTATUS[0]}" = 0 ] || { echo "render smoke failed" >&2; exit 1; }
+  # Output goes to a file, not a pipe: Chromium helper processes can outlive the app and hold a pipe open, which would hang `| grep` forever.
+  rc=0; "$VG_RENDER_ELECTRON" ${VG_ELECTRON_FLAGS:-} "$root/tools/render_smoke.js" "$out" "$work/render-$which.png" "$sel" > "$work/render-$which.log" 2>&1 || rc=$?
+  grep -E '^(\{|ERROR|RENDER|NOTE)' "$work/render-$which.log" || true
+  [ "$rc" = 0 ] || { echo "render smoke failed (exit $rc)" >&2; tail -20 "$work/render-$which.log" >&2; exit 1; }
 fi
 sum=$(cd "$out" && find . -type f ! -name '*.gz' -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1)
 echo "built $which: output $out sha256 $sum"
