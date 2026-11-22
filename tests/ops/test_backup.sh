@@ -11,7 +11,17 @@ bin=${VG_TEST_MYSQL_BIN_DIR:-}
 if [[ -z $bin ]]; then for c in "$(dirname "$(command -v mysqld 2>/dev/null || echo /nonexistent/x)")" /opt/homebrew/opt/mysql@8.0/bin /usr/local/opt/mysql@8.0/bin /usr/sbin /usr/bin; do [[ -x $c/mysqld && -x $c/mysqldump && -x $c/mysqlbinlog ]] && { bin=$c; break; }; done; fi
 [[ -n $bin && -x $bin/mysqld ]] || { echo "SKIP: MySQL 8.0 binaries (mysqld, mysqldump, mysqlbinlog) not found; set VG_TEST_MYSQL_BIN_DIR"; exit 0; }
 tmp=$(mktemp -d); mypid=
-cleanup() { [[ -n $mypid ]] && kill "$mypid" 2>/dev/null; [[ -n ${db:-} ]] && "$bin/mysql" --defaults-extra-file="$tmp/root.cnf" -e "DROP DATABASE IF EXISTS \`$db\`; DROP USER IF EXISTS 'vgbk_u'@'localhost','vgbk_u'@'127.0.0.1';" 2>/dev/null; sleep 0.5; rm -rf "$tmp"; }
+cleanup() {
+  [[ -n ${db:-} ]] && "$bin/mysql" --defaults-extra-file="$tmp/root.cnf" -e "DROP DATABASE IF EXISTS \`$db\`; DROP USER IF EXISTS 'vgbk_u'@'localhost','vgbk_u'@'127.0.0.1';" 2>/dev/null
+  if [[ -n $mypid ]]; then
+    # 必须等 mysqld 真正退出再删 datadir：带 binlog 的实例关闭较慢，固定 sleep 后就 rm -rf 会让它
+    # 在目录消失后空转占满 CPU 且不退出（孤儿进程）。先 SIGTERM 并等待，超时再 SIGKILL。
+    kill "$mypid" 2>/dev/null
+    for _ in $(seq 1 120); do kill -0 "$mypid" 2>/dev/null || break; sleep 0.25; done
+    kill -0 "$mypid" 2>/dev/null && { kill -9 "$mypid" 2>/dev/null; wait "$mypid" 2>/dev/null; }
+  fi
+  rm -rf "$tmp"
+}
 trap cleanup EXIT
 fail=0; pass=0
 ok()   { pass=$((pass+1)); echo "  ok   - $1"; }

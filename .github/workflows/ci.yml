@@ -147,6 +147,30 @@ jobs:
           b=$(bash tools/build_clients.sh manager "$RUNNER_TEMP/manager3" | sed -n 's/.*sha256 //p')
           echo "$a $b"; test -n "$a" && test "$a" = "$b"
 
+  android:
+    # Story 1.9: unsigned debug APK from a pinned upstream SHA + patch queue, Gradle dependency audit, JVM unit tests, reproducibility.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - run: python3 -I tests/ops/test_mobile_gates.py
+      - name: fetch pinned upstream
+        run: |
+          mkdir -p upstream
+          git clone --quiet https://github.com/TangSengDaoDao/TangSengDaoDaoAndroid.git upstream/TangSengDaoDaoAndroid
+      - name: Android SDK packages
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+      - name: Build (policy gate, audit, assembleDebug, unit tests)
+        timeout-minutes: 30
+        run: bash tools/build_android.sh "$RUNNER_TEMP/android1"
+      - name: Reproducibility - a second clean build gives the same APK hash
+        timeout-minutes: 30
+        run: |
+          a=$(VG_SKIP_AUDIT=1 bash tools/build_android.sh "$RUNNER_TEMP/android2" | sed -n 's/.*apk sha256 //p')
+          b=$(VG_SKIP_AUDIT=1 bash tools/build_android.sh "$RUNNER_TEMP/android3" | sed -n 's/.*apk sha256 //p')
+          echo "$a $b"; test -n "$a" && test "$a" = "$b"
+
   design:
     runs-on: ubuntu-latest
     steps:

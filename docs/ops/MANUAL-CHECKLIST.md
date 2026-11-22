@@ -295,6 +295,14 @@ VG_AUDIT_ANCHOR_TOKEN=<写令牌>
 
 ## E. 监控与可观测性落地（需要你的监控环境）
 
+### C14. 移动端签名、最终包名与推送凭据（Story 1.9，需要你的账号）
+1. **最终包名（PRD OQ-1）**：现在 Android 是 `app.veyrogram.android`、iOS 是 `app.veyrogram.ios`，都是临时值。定下后告诉我（或自己改 `apps/android/patches`、`apps/ios/patches` 里的值）。
+2. **Android 发布签名**：生成自己的 keystore（`keytool -genkeypair -v -keystore veyrogram-release.jks -alias veyrogram -keyalg RSA -keysize 4096 -validity 10000`），密码与文件只放在发布机/CI 密文里，不要提交、不要发给我。
+3. **iOS 签名**：Apple Developer 账号建 App ID（含 Push Notifications 能力）、证书与描述文件，团队 ID 在发布流水线里注入（仓库里已去掉厂商团队 ID）。
+4. **推送**：FCM 需要你自己的 `google-services.json`（放 `app/` 下即启用，不要提交）；小米/华为/OPPO/vivo 的应用 ID 与密钥填 `PushKeys.java` 与 `AndroidManifest.xml`（同样不提交）。现在全部关闭。
+5. **iOS 依赖**：Pods 里 libwebp 1.2.4 受 CVE-2023-4863 影响，升级需要重新 `pod install` 并回归；Pods 里 `tangtaoit` 的几个个人 fork 请你决定是否接受或换源。
+6. **minSdk 26**：Android 7.x 设备不再支持（为替换有漏洞的 fastjson）。如果你必须支持 7.x，告诉我，我改成逐个迁移 28 个文件到别的 JSON 库。
+
 ### E1. 加载告警规则并校准阈值
 - 规则文件：`infrastructure/prometheus/veyrogram-alerts.yml`（已通过 `promtool check/test`）。
 - 在你的 Prometheus 配置里增加：

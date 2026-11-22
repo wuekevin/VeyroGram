@@ -1,0 +1,232 @@
+diff --git a/Modules/WuKongBase/WuKongBase/Classes/WKAppConfig.m b/Modules/WuKongBase/WuKongBase/Classes/WKAppConfig.m
+index 05f1780..4c91e19 100644
+--- a/Modules/WuKongBase/WuKongBase/Classes/WKAppConfig.m
++++ b/Modules/WuKongBase/WuKongBase/Classes/WKAppConfig.m
+@@ -30,7 +30,7 @@ -(instancetype) init {
+         self.appName = @"唐僧叨叨";
+         self.shortName = @"WuKong ID";
+         self.appID = @""; // appstore的id
+-        self.appSchemaPrefix = @"wukong";
++        self.appSchemaPrefix = @"veyrogram"; // VeyroGram: matches CFBundleURLSchemes in Info.plist
+         self.clusterOn = YES;
+         
+          // ---------- 基础配置 ----------
+@@ -86,7 +86,7 @@ -(instancetype) init {
+             self.visibleEdgeInsets = insets;
+         }
+         
+-        self.inviteMsg = [NSString stringWithFormat:@"我正在使用【%@】app，体验还不错。你也赶快来下载玩玩吧！https://www.githubim.cn",self.appName];
++        self.inviteMsg = [NSString stringWithFormat:@"我正在使用【%@】app，体验还不错。你也赶快来下载玩玩吧！",self.appName];
+         NSString *tempDir= NSTemporaryDirectory();
+         self.videoCacheDir = [tempDir stringByAppendingPathComponent:[NSString stringWithFormat:@"wukong_video_cache"]];
+         [WKFileUtil createDirectoryIfNotExist: self.videoCacheDir];
+diff --git a/Podfile b/Podfile
+index bd287e5..ae9be69 100644
+--- a/Podfile
++++ b/Podfile
+@@ -3,8 +3,8 @@
+ workspace 'TangSengDaoDaoiOS.xcworkspace'
+ 
+ post_install do |installer|
+-    # 填写你自己的开发者团队的team id
+-    dev_team = "H8PU463W68"
++    # VeyroGram: no vendor team id; signing is configured by the release pipeline (checklist C13)
++    dev_team = ""
+     project = installer.aggregate_targets[0].user_project
+     project.targets.each do |target|
+         target.build_configurations.each do |config|
+@@ -20,7 +20,7 @@ post_install do |installer|
+             if target.respond_to?(:product_type) and target.product_type == "com.apple.product-type.bundle"
+               config.build_settings['DEVELOPMENT_TEAM'] = dev_team
+             end
+-            config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '11.0'
++            config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
+             config.build_settings['ENABLE_BITCODE'] = 'NO'
+             config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64"
+         end
+diff --git a/Pods/AFNetworking/AFNetworking/AFHTTPSessionManager.m b/Pods/AFNetworking/AFNetworking/AFHTTPSessionManager.m
+index b4ab591..2e25641 100644
+--- a/Pods/AFNetworking/AFNetworking/AFHTTPSessionManager.m
++++ b/Pods/AFNetworking/AFNetworking/AFHTTPSessionManager.m
+@@ -29,7 +29,6 @@
+ #import <Security/Security.h>
+ 
+ #import <netinet/in.h>
+-#import <netinet6/in6.h>
+ #import <arpa/inet.h>
+ #import <ifaddrs.h>
+ #import <netdb.h>
+diff --git a/Pods/AFNetworking/AFNetworking/AFNetworkReachabilityManager.m b/Pods/AFNetworking/AFNetworking/AFNetworkReachabilityManager.m
+index 0322bf9..949dfef 100644
+--- a/Pods/AFNetworking/AFNetworking/AFNetworkReachabilityManager.m
++++ b/Pods/AFNetworking/AFNetworking/AFNetworkReachabilityManager.m
+@@ -23,7 +23,6 @@
+ #if !TARGET_OS_WATCH
+ 
+ #import <netinet/in.h>
+-#import <netinet6/in6.h>
+ #import <arpa/inet.h>
+ #import <ifaddrs.h>
+ #import <netdb.h>
+diff --git a/TangSengDaoDao/AppDelegate.m b/TangSengDaoDao/AppDelegate.m
+index e21608d..2c7b1a2 100644
+--- a/TangSengDaoDao/AppDelegate.m
++++ b/TangSengDaoDao/AppDelegate.m
+@@ -16,8 +16,16 @@
+ #import "SELUpdateAlert.h"
+ 
+ 
+-#define SERVER_IP @"api.botgate.cn" // xxx.xxx.xx.xx:8090
+-#define HTTPS_ON true // https开关
++// VeyroGram: no vendor default. Point the build at your own API with
++//   OTHER_CFLAGS='-DVG_SERVER_IP=@\"api.example.com\" -DVG_HTTPS_ON=1'
++#ifndef VG_SERVER_IP
++#define VG_SERVER_IP @"127.0.0.1:8080"
++#endif
++#ifndef VG_HTTPS_ON
++#define VG_HTTPS_ON 0
++#endif
++#define SERVER_IP VG_SERVER_IP
++#define HTTPS_ON VG_HTTPS_ON // https开关
+ 
+ 
+ #define BASE_URL [NSString stringWithFormat:@"%@://%@/v1/",HTTPS_ON?@"https":@"http",SERVER_IP]
+diff --git a/TangSengDaoDao/Info.plist b/TangSengDaoDao/Info.plist
+index c1fc814..0bb8a98 100644
+--- a/TangSengDaoDao/Info.plist
++++ b/TangSengDaoDao/Info.plist
+@@ -33,7 +33,7 @@
+ 			<string>webchat</string>
+ 			<key>CFBundleURLSchemes</key>
+ 			<array>
+-				<string>botgate</string>
++				<string>veyrogram</string>
+ 			</array>
+ 		</dict>
+ 	</array>
+diff --git a/TangSengDaoDao/TangSengDaoDao.entitlements b/TangSengDaoDao/TangSengDaoDao.entitlements
+index 1ee33d2..903def2 100644
+--- a/TangSengDaoDao/TangSengDaoDao.entitlements
++++ b/TangSengDaoDao/TangSengDaoDao.entitlements
+@@ -4,9 +4,5 @@
+ <dict>
+ 	<key>aps-environment</key>
+ 	<string>development</string>
+-	<key>com.apple.developer.associated-domains</key>
+-	<array>
+-		<string>applinks:githubim.com</string>
+-	</array>
+ </dict>
+ </plist>
+diff --git a/TangSengDaoDaoiOS.xcodeproj/project.pbxproj b/TangSengDaoDaoiOS.xcodeproj/project.pbxproj
+index 359804d..e0dce9c 100644
+--- a/TangSengDaoDaoiOS.xcodeproj/project.pbxproj
++++ b/TangSengDaoDaoiOS.xcodeproj/project.pbxproj
+@@ -560,7 +560,7 @@
+ 				CODE_SIGN_IDENTITY = "Apple Development";
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+-				DEVELOPMENT_TEAM = H8PU463W68;
++				DEVELOPMENT_TEAM = "";
+ 				INFOPLIST_FILE = NotificationService/Info.plist;
+ 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+@@ -569,7 +569,7 @@
+ 					"@executable_path/../../Frameworks",
+ 				);
+ 				MARKETING_VERSION = 1.0.0;
+-				PRODUCT_BUNDLE_IDENTIFIER = com.xinbida.tangsengdaodao.NotificationService;
++				PRODUCT_BUNDLE_IDENTIFIER = app.veyrogram.ios.NotificationService;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				SKIP_INSTALL = YES;
+@@ -584,7 +584,7 @@
+ 				CODE_SIGN_IDENTITY = "Apple Development";
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+-				DEVELOPMENT_TEAM = H8PU463W68;
++				DEVELOPMENT_TEAM = "";
+ 				INFOPLIST_FILE = NotificationService/Info.plist;
+ 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+@@ -593,7 +593,7 @@
+ 					"@executable_path/../../Frameworks",
+ 				);
+ 				MARKETING_VERSION = 1.0.0;
+-				PRODUCT_BUNDLE_IDENTIFIER = com.xinbida.tangsengdaodao.NotificationService;
++				PRODUCT_BUNDLE_IDENTIFIER = app.veyrogram.ios.NotificationService;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				SKIP_INSTALL = YES;
+@@ -608,7 +608,7 @@
+ 				CODE_SIGN_IDENTITY = "Apple Development";
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+-				DEVELOPMENT_TEAM = H8PU463W68;
++				DEVELOPMENT_TEAM = "";
+ 				INFOPLIST_FILE = NotificationContent/Info.plist;
+ 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+@@ -617,7 +617,7 @@
+ 					"@executable_path/../../Frameworks",
+ 				);
+ 				MARKETING_VERSION = 1.0.0;
+-				PRODUCT_BUNDLE_IDENTIFIER = com.xinbida.tangsengdaodao.NotificationContent;
++				PRODUCT_BUNDLE_IDENTIFIER = app.veyrogram.ios.NotificationContent;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				SKIP_INSTALL = YES;
+@@ -632,7 +632,7 @@
+ 				CODE_SIGN_IDENTITY = "Apple Development";
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+-				DEVELOPMENT_TEAM = H8PU463W68;
++				DEVELOPMENT_TEAM = "";
+ 				INFOPLIST_FILE = NotificationContent/Info.plist;
+ 				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+ 				LD_RUNPATH_SEARCH_PATHS = (
+@@ -641,7 +641,7 @@
+ 					"@executable_path/../../Frameworks",
+ 				);
+ 				MARKETING_VERSION = 1.0.0;
+-				PRODUCT_BUNDLE_IDENTIFIER = com.xinbida.tangsengdaodao.NotificationContent;
++				PRODUCT_BUNDLE_IDENTIFIER = app.veyrogram.ios.NotificationContent;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				SKIP_INSTALL = YES;
+@@ -791,7 +791,7 @@
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+ 				DEFINES_MODULE = YES;
+-				DEVELOPMENT_TEAM = H8PU463W68;
++				DEVELOPMENT_TEAM = "";
+ 				ENABLE_BITCODE = NO;
+ 				FRAMEWORK_SEARCH_PATHS = (
+ 					"$(inherited)",
+@@ -876,7 +876,7 @@
+ 					"-framework",
+ 					"\"WuKongIMSDK\"",
+ 				);
+-				PRODUCT_BUNDLE_IDENTIFIER = com.xinbida.tangsengdaodao;
++				PRODUCT_BUNDLE_IDENTIFIER = app.veyrogram.ios;
+ 				PRODUCT_NAME = TangSengDaoDao;
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+@@ -901,7 +901,7 @@
+ 				CODE_SIGN_STYLE = Automatic;
+ 				CURRENT_PROJECT_VERSION = 1;
+ 				DEFINES_MODULE = YES;
+-				DEVELOPMENT_TEAM = H8PU463W68;
++				DEVELOPMENT_TEAM = "";
+ 				ENABLE_BITCODE = NO;
+ 				FRAMEWORK_SEARCH_PATHS = (
+ 					"$(inherited)",
+@@ -986,7 +986,7 @@
+ 					"-framework",
+ 					"\"WuKongIMSDK\"",
+ 				);
+-				PRODUCT_BUNDLE_IDENTIFIER = com.xinbida.tangsengdaodao;
++				PRODUCT_BUNDLE_IDENTIFIER = app.veyrogram.ios;
+ 				PRODUCT_NAME = TangSengDaoDao;
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

@@ -1,0 +1,388 @@
+diff --git a/app/build.gradle b/app/build.gradle
+index 104431c..8a49eeb 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -2,33 +2,18 @@ plugins {
+     id 'com.android.application'
+     id 'kotlin-parcelize'
+     id 'kotlin-android'
+-    id 'com.google.gms.google-services'
+ }
+ 
+-// 读取 local.properties 中的 applicationId
+-def localProperties = new Properties()
+-def localPropertiesFile = rootProject.file('local.properties')
+-if (localPropertiesFile.exists()) {
+-    localProperties.load(new FileInputStream(localPropertiesFile))
+-}
+-
+-def appId = localProperties.getProperty('applicationId')
+-if (appId == null || appId.isEmpty()) {
+-    throw new GradleException("❌ 错误：请在 local.properties 中设置 applicationId=你的包名，并在MainActivity和TSApplication文件中导包设置的包名")
+-}
++// VeyroGram: the application id is fixed here (temporary until PRD OQ-1 decides the
++// final package name) and can be overridden with -PvgApplicationId=... for flavours.
++// R / ViewBinding classes are generated in the fixed namespace below, so changing the
++// application id never breaks source imports.
++def appId = (findProperty('vgApplicationId') ?: 'app.veyrogram.android') as String
+ 
+-// 自动更新 google-services.json 中的 package_name
+-def googleServicesFile = file('google-services.json')
+-if (googleServicesFile.exists()) {
+-    def jsonContent = googleServicesFile.text
+-    def updatedContent = jsonContent.replaceAll(
+-        /"package_name":\s*"[^"]*"/,
+-        "\"package_name\": \"${appId}\""
+-    )
+-    if (jsonContent != updatedContent) {
+-        googleServicesFile.write(updatedContent)
+-        println "✅ google-services.json 的 package_name 已更新为: ${appId}"
+-    }
++// Push (FCM) needs an operator-supplied google-services.json. The upstream vendor file was
++// removed; without one the build still succeeds and push is simply disabled at runtime.
++if (file('google-services.json').exists()) {
++    apply plugin: 'com.google.gms.google-services'
+ }
+ 
+ android {
+@@ -46,7 +31,7 @@ android {
+ //            keyPassword 'demo1365'
+ //        }
+ //    }
+-    namespace appId
++    namespace 'app.veyrogram.android'
+     compileSdk rootProject.ext.compileSdkVersion
+     aaptOptions.cruncherEnabled = false
+     aaptOptions.useNewCruncher = false
+diff --git a/app/google-services.json b/app/google-services.json
+deleted file mode 100644
+index e574f63..0000000
+--- a/app/google-services.json
++++ /dev/null
+@@ -1,29 +0,0 @@
+-{
+-  "project_info": {
+-    "project_number": "232134567764",
+-    "project_id": "tsdddemo",
+-    "storage_bucket": "tangsengdaodaoandroid.appspot.com"
+-  },
+-  "client": [
+-    {
+-      "client_info": {
+-        "mobilesdk_app_id": "1:232134567764:android:4454b65123eds3092326735",
+-        "android_client_info": {
+-          "package_name": "com.test.ts"
+-        }
+-      },
+-      "oauth_client": [],
+-      "api_key": [
+-        {
+-          "current_key": "AIzaSyDOVB7GuZnDXIZWT-qaIiCrQU4qvfwWKGU"
+-        }
+-      ],
+-      "services": {
+-        "appinvite_service": {
+-          "other_platform_oauth_client": []
+-        }
+-      }
+-    }
+-  ],
+-  "configuration_version": "1"
+-}
+\ No newline at end of file
+diff --git a/app/src/main/java/com/test/demo2/MainActivity.kt b/app/src/main/java/com/test/demo2/MainActivity.kt
+index 1564c91..db29147 100644
+--- a/app/src/main/java/com/test/demo2/MainActivity.kt
++++ b/app/src/main/java/com/test/demo2/MainActivity.kt
+@@ -17,8 +17,8 @@ import com.chat.base.utils.WKDialogUtils
+ import com.chat.login.ui.PerfectUserInfoActivity
+ import com.chat.login.ui.WKLoginActivity
+ import com.chat.uikit.TabActivity
+-import com.test.ts.R
+-import com.test.ts.databinding.ActivityMainBinding
++import app.veyrogram.android.R
++import app.veyrogram.android.databinding.ActivityMainBinding
+ import com.xinbida.wukongim.WKIM
+ 
+ class MainActivity : WKBaseActivity<ActivityMainBinding>() {
+diff --git a/app/src/main/java/com/test/demo2/TSApplication.kt b/app/src/main/java/com/test/demo2/TSApplication.kt
+index 6b250ba..fa57ae8 100644
+--- a/app/src/main/java/com/test/demo2/TSApplication.kt
++++ b/app/src/main/java/com/test/demo2/TSApplication.kt
+@@ -35,7 +35,7 @@ import com.chat.uikit.TabActivity
+ import com.chat.uikit.WKUIKitApplication
+ import com.chat.uikit.chat.manager.WKIMUtils
+ import com.chat.uikit.user.service.UserModel
+-import com.test.ts.R
++import app.veyrogram.android.R
+ import kotlin.system.exitProcess
+ 
+ class TSApplication : MultiDexApplication() {
+diff --git a/app/src/main/res/values-en/strings.xml b/app/src/main/res/values-en/strings.xml
+index f5196f6..a2d7f36 100644
+--- a/app/src/main/res/values-en/strings.xml
++++ b/app/src/main/res/values-en/strings.xml
+@@ -1,6 +1,6 @@
+ <resources xmlns:tools="http://schemas.android.com/tools">
+     <string name="no_permissions">Authorization fails, some functions of the APP will not be available, please open the application permissions and try again</string>
+-    <string name="app_name" tools:ignore="ExtraTranslation">demo</string>
++    <string name="app_name" tools:ignore="ExtraTranslation">VeyroGram</string>
+     <string name="agree">Agree</string>
+     <string name="disagree">Disagree</string>
+     <string name="app_slogan">Two lines of code to communicate</string>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 43fdcd1..368bab6 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,5 +1,5 @@
+ <resources>
+-    <string name="app_name">demo</string>
++    <string name="app_name">VeyroGram</string>
+     <string name="no_permissions">授权失败,APP部分功能将无法使用，请打开应用权限后重试</string>
+     <string name="agree">同意</string>
+     <string name="disagree">不同意</string>
+diff --git a/app/src/test/java/app/veyrogram/android/IdentityTest.kt b/app/src/test/java/app/veyrogram/android/IdentityTest.kt
+new file mode 100644
+index 0000000..a35a642
+--- /dev/null
++++ b/app/src/test/java/app/veyrogram/android/IdentityTest.kt
+@@ -0,0 +1,14 @@
++package app.veyrogram.android
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNotEquals
++import org.junit.Test
++
++/** The default application id is VeyroGram's, never the upstream demo id. */
++class IdentityTest {
++    @Test
++    fun applicationIdIsVeyroGram() {
++        assertEquals("app.veyrogram.android", BuildConfig.APPLICATION_ID)
++        assertNotEquals("com.test.ts", BuildConfig.APPLICATION_ID)
++    }
++}
+diff --git a/build.gradle b/build.gradle
+index abfa749..9a8f2a7 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -6,9 +6,6 @@ buildscript {
+         google()
+         mavenCentral()
+         maven { url "https://jitpack.io" }
+-        maven {
+-            url "https://mvnrepository.com"
+-        }
+         //华为推送
+         maven {url 'https://developer.huawei.com/repo/'}
+     }
+@@ -31,6 +28,8 @@ allprojects {
+             force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+             force "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
+         }
++        // VeyroGram: Guava below 33.7.2 has a deserialization memory-allocation advisory (GHSA-xxph-c9ww-hj94)
++        resolutionStrategy.force "com.google.guava:guava:33.8.0-android"
+         resolutionStrategy.force "androidx.camera:camera-core:$camerax_version"
+         resolutionStrategy.force "androidx.camera:camera-camera2:$camerax_version"
+         resolutionStrategy.force "androidx.camera:camera-lifecycle:$camerax_version"
+@@ -38,8 +37,15 @@ allprojects {
+     }
+ }
+ 
++// VeyroGram: the upstream modules only ship placeholder unit tests without a JUnit
++// dependency, so they could not even compile. Give every Android module JUnit.
++subprojects {
++    plugins.withId('com.android.library') { dependencies { testImplementation 'junit:junit:4.13.2' } }
++    plugins.withId('com.android.application') { dependencies { testImplementation 'junit:junit:4.13.2' } }
++}
++
+ project.ext {
+-    minSdkVersion = 24
++    minSdkVersion = 26  // VeyroGram: fastjson2 (replacement for the RCE-affected fastjson 1.x) needs API 26+
+     targetSdkVersion = 34
+     compileSdkVersion = 35
+     buildToolsVersion = "35.0.0"
+diff --git a/gradle/wrapper/gradle-wrapper.properties b/gradle/wrapper/gradle-wrapper.properties
+index 25d0c1f..64cf6c2 100644
+--- a/gradle/wrapper/gradle-wrapper.properties
++++ b/gradle/wrapper/gradle-wrapper.properties
+@@ -4,3 +4,4 @@ distributionPath=wrapper/dists
+ distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip
+ zipStoreBase=GRADLE_USER_HOME
+ zipStorePath=wrapper/dists
++distributionSha256Sum=20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78
+diff --git a/settings.gradle b/settings.gradle
+index 660e5f1..75e6a98 100644
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -9,7 +9,6 @@ dependencyResolutionManagement {
+     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+     repositories {
+         google()
+-        jcenter()
+         mavenCentral()
+         maven { url "https://jitpack.io" }
+         maven {url 'https://developer.huawei.com/repo/'}
+diff --git a/wkbase/build.gradle b/wkbase/build.gradle
+index fd786ae..23ae258 100644
+--- a/wkbase/build.gradle
++++ b/wkbase/build.gradle
+@@ -59,7 +59,8 @@ dependencies {
+     api 'com.github.li-xiaojun:XPopup:2.9.19'
+     api 'androidx.multidex:multidex:2.0.1'
+ 
+-    api 'com.alibaba:fastjson:1.2.83'
++    // VeyroGram: fastjson 1.2.x has an unfixed RCE (GHSA-crf3-v9rr-v7hj); 2.0.x ships the same com.alibaba.fastjson API as a compat layer
++    api 'com.alibaba:fastjson:2.0.66'
+     //glide
+     api('com.github.bumptech.glide:glide:5.0.5') {
+         transitive = true
+@@ -90,7 +91,7 @@ dependencies {
+     implementation 'com.vanniktech:android-image-cropper:4.6.0'
+     api 'androidx.emoji2:emoji2:1.6.0'
+     api "androidx.emoji2:emoji2-views:1.6.0"
+-    api 'org.jsoup:jsoup:1.21.2'
++    api 'org.jsoup:jsoup:1.24.1'
+     api 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
+     api('io.github.carguo:gsyvideoplayer:11.3.0') {
+         exclude group: 'io.antmedia', module: 'rtmp-client'
+diff --git a/wkbase/src/test/java/app/veyrogram/base/JsonCompatTest.java b/wkbase/src/test/java/app/veyrogram/base/JsonCompatTest.java
+new file mode 100644
+index 0000000..7cea969
+--- /dev/null
++++ b/wkbase/src/test/java/app/veyrogram/base/JsonCompatTest.java
+@@ -0,0 +1,29 @@
++package app.veyrogram.base;
++
++import static org.junit.Assert.assertEquals;
++
++import com.alibaba.fastjson.JSON;
++import com.alibaba.fastjson.JSONArray;
++import com.alibaba.fastjson.JSONObject;
++
++import org.junit.Test;
++
++/** Exercises the com.alibaba.fastjson API surface the upstream modules use, on the fastjson2 compat layer. */
++public class JsonCompatTest {
++    @Test
++    public void parseObjectAndArray() {
++        JSONObject o = JSON.parseObject("{\"uid\":\"u1\",\"n\":3,\"tags\":[\"a\",\"b\"]}");
++        assertEquals("u1", o.getString("uid"));
++        assertEquals(3, o.getIntValue("n"));
++        JSONArray tags = o.getJSONArray("tags");
++        assertEquals(2, tags.size());
++        assertEquals("b", tags.getString(1));
++    }
++
++    @Test
++    public void roundTrip() {
++        JSONObject o = new JSONObject();
++        o.put("k", "v");
++        assertEquals("v", JSON.parseObject(o.toJSONString()).getString("k"));
++    }
++}
+diff --git a/wkpush/build.gradle b/wkpush/build.gradle
+index d18e8dd..fd3af28 100644
+--- a/wkpush/build.gradle
++++ b/wkpush/build.gradle
+@@ -2,7 +2,6 @@ plugins {
+     id 'com.android.library'
+     id 'kotlin-parcelize'
+     id 'kotlin-android'
+-    id 'com.google.gms.google-services'
+ }
+ android {
+     compileSdk rootProject.ext.compileSdkVersion
+diff --git a/wkpush/src/main/AndroidManifest.xml b/wkpush/src/main/AndroidManifest.xml
+index d4bab5a..ebafe18 100644
+--- a/wkpush/src/main/AndroidManifest.xml
++++ b/wkpush/src/main/AndroidManifest.xml
+@@ -95,7 +95,7 @@
+         <!--华为-->
+         <meta-data
+             android:name="com.huawei.hms.client.appid"
+-            android:value="108677047" />
++            android:value="" />
+ 
+         <!--vivo-->
+         <meta-data
+@@ -103,11 +103,11 @@
+             android:value="484" />
+         <meta-data
+             android:name="com.vivo.push.api_key"
+-            android:value="d14dac0803bc8470d9ace9e29657a160" />
++            android:value="" />
+ 
+         <meta-data
+             android:name="com.vivo.push.app_id"
+-            android:value="105660344" />
++            android:value="" />
+ 
+         <!--push应用定义消息receiver声明-->
+         <receiver
+diff --git a/wkpush/src/main/java/com/chat/push/PushKeys.java b/wkpush/src/main/java/com/chat/push/PushKeys.java
+index c5fc675..4ae531b 100644
+--- a/wkpush/src/main/java/com/chat/push/PushKeys.java
++++ b/wkpush/src/main/java/com/chat/push/PushKeys.java
+@@ -1,10 +1,14 @@
+ package com.chat.push;
+ 
++/**
++ * VeyroGram: the upstream vendor push credentials were removed. Fill these from your own
++ * vendor consoles (never commit real values); empty values keep the vendor channels off.
++ */
+ public class PushKeys {
+ 
+-    public static final String xiaoMiAppID = "2882303761520252187";
+-    public static final String xiaoMiAppKey = "5302025297187";
+-    public static final String huaweiAPPID = "108677047";
+-    public static final String oppoAppKey = "df1fd1874702472d973cbe3ffea25c66";
+-    public static final String oppoAppSecret = "6739dd8f1150469680fc1a2ba1697a12";
++    public static final String xiaoMiAppID = "";
++    public static final String xiaoMiAppKey = "";
++    public static final String huaweiAPPID = "";
++    public static final String oppoAppKey = "";
++    public static final String oppoAppSecret = "";
+ }
+diff --git a/wkpush/src/main/java/com/chat/push/WKPushApplication.java b/wkpush/src/main/java/com/chat/push/WKPushApplication.java
+index 7cbfe02..341ecbd 100644
+--- a/wkpush/src/main/java/com/chat/push/WKPushApplication.java
++++ b/wkpush/src/main/java/com/chat/push/WKPushApplication.java
+@@ -66,9 +66,13 @@ public class WKPushApplication {
+ 
+     private void initPush() {
+         if (mContext == null || mContext.get() == null) return;
+-        FirebaseApp.initializeApp(mContext.get());
+         notifyChannel(WKBaseApplication.getInstance().application);
+-        getPushToken();
++        // VeyroGram: FCM is optional. Without an operator-supplied google-services.json the
++        // generated resource google_app_id is absent and push stays disabled.
++        if (mContext.get().getResources().getIdentifier("google_app_id", "string", mContext.get().getPackageName()) != 0) {
++            FirebaseApp.initializeApp(mContext.get());
++            getPushToken();
++        }
+ //        if (!TextUtils.isEmpty(WKConfig.getInstance().getUid())) {
+ //            if (OsUtils.isEmui()) {
+ //                new Thread(() -> getHuaWeiToken(mContext.get())).start();
+diff --git a/wkpush/src/test/java/com/chat/push/PushKeysTest.java b/wkpush/src/test/java/com/chat/push/PushKeysTest.java
+new file mode 100644
+index 0000000..8359472
+--- /dev/null
++++ b/wkpush/src/test/java/com/chat/push/PushKeysTest.java
+@@ -0,0 +1,17 @@
++package com.chat.push;
++
++import static org.junit.Assert.assertEquals;
++
++import org.junit.Test;
++
++/** Guards against re-introducing vendor push credentials into the source tree. */
++public class PushKeysTest {
++    @Test
++    public void vendorPushCredentialsAreEmpty() {
++        assertEquals("", PushKeys.xiaoMiAppID);
++        assertEquals("", PushKeys.xiaoMiAppKey);
++        assertEquals("", PushKeys.huaweiAPPID);
++        assertEquals("", PushKeys.oppoAppKey);
++        assertEquals("", PushKeys.oppoAppSecret);
++    }
++}

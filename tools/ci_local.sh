@@ -32,6 +32,14 @@ if [ -d upstream/TangSengDaoDaoWeb ] && [ -d upstream/TangSengDaoDaoManager ] &&
 else
   echo "NOTE: upstream/TangSengDaoDao{Web,Manager} missing or VG_SKIP_CLIENT_BUILD=1 - client builds SKIPPED"
 fi
+step "mobile build gates (tests: Android policy, Gradle audit parsing)" python3 -I tests/ops/test_mobile_gates.py
+if [ -d upstream/TangSengDaoDaoAndroid ] && [ "${VG_SKIP_CLIENT_BUILD:-0}" != 1 ]; then
+  aw=$(mktemp -d)
+  step "Android: pinned build, policy gate, Gradle audit, debug APK, unit tests" bash tools/build_android.sh "$aw/android"
+  git -C upstream/TangSengDaoDaoAndroid worktree remove --force "$aw/android" >/dev/null 2>&1 || true; rm -rf "$aw"
+else
+  echo "NOTE: upstream/TangSengDaoDaoAndroid missing or VG_SKIP_CLIENT_BUILD=1 - Android build SKIPPED"
+fi
 step "OpenAPI diff gate (tests)"        python3 -I tests/ops/test_openapi_diff.py
 step "upstream compat guard"             python3 -I tools/check_upstream_compat.py
 step "upstream compat guard (tests)"     python3 -I tests/ops/test_upstream_compat.py

@@ -1,0 +1,87 @@
+# -*- coding: utf-8 -*-
+"""Negative tests for the mobile build gates (Story 1.9): tools/check_android.py and tools/audit_gradle.py parsing must fail on vendor
+credentials, the demo package, non-allowlisted repositories, an unpinned Gradle wrapper and shipped push configs/keystores."""
+import os, subprocess, sys, tempfile, textwrap
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+fails = []
+
+
+def check(name, cond):
+    print(("ok   " if cond else "FAIL ") + name)
+    if not cond:
+        fails.append(name)
+
+
+def run(tool, *args):
+    return subprocess.run([sys.executable, "-I", os.path.join(ROOT, "tools", tool), *args], capture_output=True, text=True)
+
+
+def write(base, rel, text):
+    p = os.path.join(base, rel)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    open(p, "w", encoding="utf-8").write(textwrap.dedent(text))
+
+
+def good_tree():
+    t = tempfile.mkdtemp()
+    write(t, "app/build.gradle", "android {\n    namespace 'app.veyrogram.android'\n}\n")
+    write(t, "settings.gradle", "repositories {\n  google()\n  mavenCentral()\n  maven { url \"https://jitpack.io\" }\n}\n")
+    write(t, "gradle/wrapper/gradle-wrapper.properties",
+          "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip\ndistributionSha256Sum=" + "a" * 64 + "\n")
+    return t
+
+
+t = good_tree(); r = run("check_android.py", t)
+check("android: a clean tree passes", r.returncode == 0)
+
+t = good_tree(); write(t, "wkpush/src/main/java/K.java", 'class K { static final String A = "108677047"; }\n')
+r = run("check_android.py", t); check("android: a vendor push credential is refused", r.returncode == 1 and "vendor credential" in r.stdout)
+
+t = good_tree(); write(t, "app/src/main/java/M.kt", "import com.test.ts.R\n")
+r = run("check_android.py", t); check("android: the upstream demo package is refused", r.returncode == 1 and "com.test.ts" in r.stdout)
+
+t = good_tree(); write(t, "app/src/test/java/T.kt", "// asserts com.test.ts is gone\n")
+check("android: tests may name forbidden strings", run("check_android.py", t).returncode == 0)
+
+t = good_tree(); write(t, "build.gradle", "repositories {\n  maven { url \"https://mirror.example.cn/repository/public\" }\n}\n")
+r = run("check_android.py", t); check("android: a non-allowlisted repository is refused", r.returncode == 1 and "allowlist" in r.stdout)
+
+t = good_tree(); write(t, "build.gradle", "repositories {\n  jcenter()\n}\n")
+r = run("check_android.py", t); check("android: jcenter is refused", r.returncode == 1)
+
+t = good_tree(); write(t, "build.gradle", "repositories {\n  maven { url \"http://jitpack.io\" }\n}\n")
+r = run("check_android.py", t); check("android: a non-https repository is refused", r.returncode == 1 and "non-https" in r.stdout)
+
+t = good_tree(); write(t, "gradle/wrapper/gradle-wrapper.properties", "distributionUrl=https\\://services.gradle.org/x.zip\n")
+r = run("check_android.py", t); check("android: an unpinned Gradle wrapper is refused", r.returncode == 1 and "distributionSha256Sum" in r.stdout)
+
+t = good_tree(); write(t, "app/google-services.json", "{}")
+r = run("check_android.py", t); check("android: a committed google-services.json is refused", r.returncode == 1)
+
+t = good_tree(); write(t, "release.jks", "x")
+r = run("check_android.py", t); check("android: a committed keystore is refused", r.returncode == 1)
+
+t = good_tree(); write(t, "app/build.gradle", "android {\n    namespace appId\n}\n")
+r = run("check_android.py", t); check("android: a non-fixed namespace is refused", r.returncode == 1)
+
+t = good_tree(); write(t, "app/build/generated/K.java", 'class K { static final String A = "108677047"; }\n')
+check("android: build outputs are not scanned", run("check_android.py", t).returncode == 0)
+
+# audit_gradle coordinate parsing (no network)
+import audit_gradle
+tree = """\
++--- project :wkbase
+|    +--- com.alibaba:fastjson:1.2.83
+|    +--- com.google.guava:guava:33.3.1-android -> 33.8.0-android
+|    \\--- androidx.core:core:{strictly 1.13.0} -> 1.13.0 (c)
+"""
+c = audit_gradle.coords(tree)
+check("gradle audit: parses plain and upgraded coordinates", ("com.alibaba", "fastjson", "1.2.83") in c and ("com.google.guava", "guava", "33.8.0-android") in c)
+empty = tempfile.mkdtemp(); write(empty, "deps.txt", "nothing here\n")
+r = subprocess.run([sys.executable, "-I", os.path.join(ROOT, "tools", "audit_gradle.py"), os.path.join(empty, "deps.txt")], capture_output=True, text=True)
+check("gradle audit: an empty/wrong dependency listing is refused", r.returncode == 2)
+
+print(f"\n{len(fails)} FAILED" if fails else "\nall mobile gate tests passed")
+sys.exit(1 if fails else 0)
