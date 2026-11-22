@@ -6,7 +6,7 @@ index b4f8c92..1bdf911 100644
  module.exports = {
    productName: "TangSengDaoDao", //项目名
 -  appId: "com.xinbida.macapp",
-+  appId: "app.veyrogram.desktop",
++  appId: "com.veyrogram.app",
    copyright: "Copyright © ShangHaiXinBiDa", //版权
    directories: {
      output: "dist-ele", // 输出文件夹

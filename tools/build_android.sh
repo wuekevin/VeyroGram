@@ -40,7 +40,8 @@ $g :app:assembleDebug testDebugUnitTest > "$work/build.log" 2>&1 || { tail -40 "
 apk="$work/app/build/outputs/apk/debug/app-debug.apk"
 aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
 badging=$("$aapt" dump badging "$apk")
-case "$badging" in "package: name='app.veyrogram.android'"*) ;; *)  echo "APK package is not app.veyrogram.android" >&2; exit 1;; esac
+case "$badging" in "package: name='com.veyrogram.app'"*) ;; *)  echo "APK package is not com.veyrogram.app" >&2; exit 1;; esac
+case "$badging" in *"minSdkVersion:'23'"*) ;; *) echo "minSdk is not 23 (Android 6.0)" >&2; exit 1;; esac
 tests=$(find . -path '*/test-results/testDebugUnitTest/TEST-*.xml' | wc -l | tr -d ' ')
 fails=$(grep -l '<failure\|<error' $(find . -path '*/test-results/testDebugUnitTest/TEST-*.xml') 2>/dev/null | wc -l | tr -d ' ') || true
 echo "unit test classes: $tests, with failures: $fails"
@@ -48,3 +49,11 @@ echo "unit test classes: $tests, with failures: $fails"
 x="$work/apk-extract"; mkdir -p "$x"; unzip -q "$apk" -d "$x"
 if grep -rlaE "108677047|d14dac0803|tsdddemo|botgate|com\.test\.ts" "$x" >/dev/null 2>&1; then echo "vendor identity string found in the APK" >&2; exit 1; fi
 echo "apk sha256 $(shasum -a 256 "$apk" | cut -d' ' -f1)"
+# Optional signed release (R8-minified): set VG_KEYSTORE, VG_KEYSTORE_PASSWORD, VG_KEY_ALIAS, VG_KEY_PASSWORD (never commit them).
+if [ -n "${VG_KEYSTORE:-}" ]; then
+  $g :app:assembleRelease > "$work/release.log" 2>&1 || { tail -40 "$work/release.log" >&2; exit 1; }
+  rel="$work/app/build/outputs/apk/release/app-release.apk"
+  apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+  "$apksigner" verify "$rel" || { echo "release APK signature does not verify" >&2; exit 1; }
+  echo "release apk (signed) sha256 $(shasum -a 256 "$rel" | cut -d' ' -f1)"
+fi

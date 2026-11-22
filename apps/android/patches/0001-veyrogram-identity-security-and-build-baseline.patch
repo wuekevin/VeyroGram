@@ -1,5 +1,5 @@
 diff --git a/app/build.gradle b/app/build.gradle
-index 104431c..1957e82 100644
+index 104431c..9065c8a 100644
 --- a/app/build.gradle
 +++ b/app/build.gradle
 @@ -2,33 +2,18 @@ plugins {
@@ -24,7 +24,7 @@ index 104431c..1957e82 100644
 +// final package name) and can be overridden with -PvgApplicationId=... for flavours.
 +// R / ViewBinding classes are generated in the fixed namespace below, so changing the
 +// application id never breaks source imports.
-+def appId = (findProperty('vgApplicationId') ?: 'app.veyrogram.android') as String
++def appId = (findProperty('vgApplicationId') ?: 'com.veyrogram.app') as String
  
 -// 自动更新 google-services.json 中的 package_name
 -def googleServicesFile = file('google-services.json')
@@ -45,16 +45,28 @@ index 104431c..1957e82 100644
  }
  
  android {
-@@ -46,7 +31,7 @@ android {
+@@ -46,7 +31,19 @@ android {
  //            keyPassword 'demo1365'
  //        }
  //    }
 -    namespace appId
-+    namespace 'app.veyrogram.android'
++    namespace 'com.veyrogram.app'
++    // VeyroGram release signing: the keystore never lives in the repo. Provide VG_KEYSTORE, VG_KEYSTORE_PASSWORD,
++    // VG_KEY_ALIAS and VG_KEY_PASSWORD in the environment; without them the release build stays unsigned.
++    signingConfigs {
++        release {
++            if (System.getenv('VG_KEYSTORE')) {
++                storeFile file(System.getenv('VG_KEYSTORE'))
++                storePassword System.getenv('VG_KEYSTORE_PASSWORD')
++                keyAlias System.getenv('VG_KEY_ALIAS')
++                keyPassword System.getenv('VG_KEY_PASSWORD')
++            }
++        }
++    }
      compileSdk rootProject.ext.compileSdkVersion
      aaptOptions.cruncherEnabled = false
      aaptOptions.useNewCruncher = false
-@@ -58,6 +43,7 @@ android {
+@@ -58,6 +55,7 @@ android {
          targetSdkVersion rootProject.ext.targetSdkVersion
          versionCode 1
          versionName "1.0"
@@ -62,8 +74,17 @@ index 104431c..1957e82 100644
  
          testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
          vectorDrawables {
+@@ -80,7 +78,7 @@ android {
+             minifyEnabled true  // 是否混淆
+             shrinkResources true  // 是否去除无效的资源文件
+             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+-           // signingConfig signingConfigs.release
++            if (System.getenv('VG_KEYSTORE')) { signingConfig signingConfigs.release }
+         }
+         debug {
+ //            jniDebuggable true
 diff --git a/app/src/main/java/com/test/demo2/MainActivity.kt b/app/src/main/java/com/test/demo2/MainActivity.kt
-index 1564c91..db29147 100644
+index 1564c91..fb2f0f8 100644
 --- a/app/src/main/java/com/test/demo2/MainActivity.kt
 +++ b/app/src/main/java/com/test/demo2/MainActivity.kt
 @@ -17,8 +17,8 @@ import com.chat.base.utils.WKDialogUtils
@@ -72,13 +93,13 @@ index 1564c91..db29147 100644
  import com.chat.uikit.TabActivity
 -import com.test.ts.R
 -import com.test.ts.databinding.ActivityMainBinding
-+import app.veyrogram.android.R
-+import app.veyrogram.android.databinding.ActivityMainBinding
++import com.veyrogram.app.R
++import com.veyrogram.app.databinding.ActivityMainBinding
  import com.xinbida.wukongim.WKIM
  
  class MainActivity : WKBaseActivity<ActivityMainBinding>() {
 diff --git a/app/src/main/java/com/test/demo2/TSApplication.kt b/app/src/main/java/com/test/demo2/TSApplication.kt
-index 6b250ba..2077d52 100644
+index 6b250ba..20854d2 100644
 --- a/app/src/main/java/com/test/demo2/TSApplication.kt
 +++ b/app/src/main/java/com/test/demo2/TSApplication.kt
 @@ -35,7 +35,8 @@ import com.chat.uikit.TabActivity
@@ -86,8 +107,8 @@ index 6b250ba..2077d52 100644
  import com.chat.uikit.chat.manager.WKIMUtils
  import com.chat.uikit.user.service.UserModel
 -import com.test.ts.R
-+import app.veyrogram.android.BuildConfig
-+import app.veyrogram.android.R
++import com.veyrogram.app.BuildConfig
++import com.veyrogram.app.R
  import kotlin.system.exitProcess
  
  class TSApplication : MultiDexApplication() {
@@ -125,13 +146,13 @@ index 43fdcd1..368bab6 100644
      <string name="no_permissions">授权失败,APP部分功能将无法使用，请打开应用权限后重试</string>
      <string name="agree">同意</string>
      <string name="disagree">不同意</string>
-diff --git a/app/src/test/java/app/veyrogram/android/IdentityTest.kt b/app/src/test/java/app/veyrogram/android/IdentityTest.kt
+diff --git a/app/src/test/java/com/veyrogram/app/IdentityTest.kt b/app/src/test/java/com/veyrogram/app/IdentityTest.kt
 new file mode 100644
-index 0000000..a35a642
+index 0000000..7d553e6
 --- /dev/null
-+++ b/app/src/test/java/app/veyrogram/android/IdentityTest.kt
++++ b/app/src/test/java/com/veyrogram/app/IdentityTest.kt
 @@ -0,0 +1,14 @@
-+package app.veyrogram.android
++package com.veyrogram.app
 +
 +import org.junit.Assert.assertEquals
 +import org.junit.Assert.assertNotEquals
@@ -141,12 +162,12 @@ index 0000000..a35a642
 +class IdentityTest {
 +    @Test
 +    fun applicationIdIsVeyroGram() {
-+        assertEquals("app.veyrogram.android", BuildConfig.APPLICATION_ID)
++        assertEquals("com.veyrogram.app", BuildConfig.APPLICATION_ID)
 +        assertNotEquals("com.test.ts", BuildConfig.APPLICATION_ID)
 +    }
 +}
 diff --git a/build.gradle b/build.gradle
-index abfa749..9a8f2a7 100644
+index abfa749..20e5778 100644
 --- a/build.gradle
 +++ b/build.gradle
 @@ -6,9 +6,6 @@ buildscript {
@@ -181,7 +202,7 @@ index abfa749..9a8f2a7 100644
 +
  project.ext {
 -    minSdkVersion = 24
-+    minSdkVersion = 26  // VeyroGram: fastjson2 (replacement for the RCE-affected fastjson 1.x) needs API 26+
++    minSdkVersion = 23  // VeyroGram: Android 6.0+ (product decision)
      targetSdkVersion = 34
      compileSdkVersion = 35
      buildToolsVersion = "35.0.0"
@@ -207,7 +228,7 @@ index 660e5f1..75e6a98 100644
          maven { url "https://jitpack.io" }
          maven {url 'https://developer.huawei.com/repo/'}
 diff --git a/wkbase/build.gradle b/wkbase/build.gradle
-index fd786ae..23ae258 100644
+index fd786ae..06925e8 100644
 --- a/wkbase/build.gradle
 +++ b/wkbase/build.gradle
 @@ -59,7 +59,8 @@ dependencies {
@@ -215,8 +236,8 @@ index fd786ae..23ae258 100644
      api 'androidx.multidex:multidex:2.0.1'
  
 -    api 'com.alibaba:fastjson:1.2.83'
-+    // VeyroGram: fastjson 1.2.x has an unfixed RCE (GHSA-crf3-v9rr-v7hj); 2.0.x ships the same com.alibaba.fastjson API as a compat layer
-+    api 'com.alibaba:fastjson:2.0.66'
++    // VeyroGram: fastjson 1.2.68-1.2.83 has an RCE that works with default settings (GHSA-crf3-v9rr-v7hj); 1.2.84 is the first release outside the affected range and keeps the 1.x API (fastjson2 would need minSdk 26)
++    api 'com.alibaba:fastjson:1.2.84'
      //glide
      api('com.github.bumptech.glide:glide:5.0.5') {
          transitive = true

@@ -26,7 +26,7 @@ def write(base, rel, text):
 
 def good_tree():
     t = tempfile.mkdtemp()
-    write(t, "app/build.gradle", "android {\n    namespace 'app.veyrogram.android'\n}\n")
+    write(t, "app/build.gradle", "android {\n    namespace 'com.veyrogram.app'\n}\n")
     write(t, "settings.gradle", "repositories {\n  google()\n  mavenCentral()\n  maven { url \"https://jitpack.io\" }\n}\n")
     write(t, "gradle/wrapper/gradle-wrapper.properties",
           "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip\ndistributionSha256Sum=" + "a" * 64 + "\n")
@@ -102,8 +102,10 @@ t = ios_tree(); write(t, "Pods/AFNetworking/AFNetworking/A.m", "#import <netinet
 r = run("check_ios.py", t); check("ios: AFNetworking private header import is refused", r.returncode == 1 and "private header" in r.stdout)
 t = ios_tree(); write(t, "Modules/WuKongBase/WuKongBase/Classes/WKApp.m", '[Bugly startWithAppId:@"82f8dd98ff"];\n')
 r = run("check_ios.py", t); check("ios: the vendor Bugly app id is refused", r.returncode == 1)
-t = ios_tree(); write(t, "Modules/WuKongBase/WuKongBase/Bugly.framework/Bugly", "x")
-r = run("check_ios.py", t); check("ios: the prebuilt Bugly framework is refused", r.returncode == 1 and "prebuilt" in r.stdout)
+t = ios_tree(); write(t, "Pods/YYImage/Vendor/WebP.framework/WebP", "x")
+r = run("check_ios.py", t); check("ios: the old prebuilt WebP.framework is refused", r.returncode == 1 and "prebuilt" in r.stdout)
+t = ios_tree(); write(t, "Modules/WuKongBase/WuKongBase/Classes/WKApp.m", "#import <Bugly/Bugly.h>\n")
+check("ios: Bugly itself is allowed (only the vendor app id is refused)", run("check_ios.py", t).returncode == 0)
 
 
 print(f"\n{len(fails)} FAILED" if fails else "\nall mobile gate tests passed")

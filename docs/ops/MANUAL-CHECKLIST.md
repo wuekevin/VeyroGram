@@ -252,7 +252,7 @@ Mac 上已用真实 MySQL 8.0（含 binlog）、第二个真实 mysqld、真实 
 - 在你决定之前，各端工程可以直接用相对路径引用仓库里的 `packages/clients/*`。
 ### C13. 桌面端打包、签名与更新服务器（Story 1.10，需要你的证书与服务器）
 `tools/build_clients.sh web` 只产出 Web 构建和 Electron 的编译产物，不打安装包。要发布桌面端，需要：
-- **应用 ID/名称**：`app.veyrogram.desktop` 是临时值，待 OQ-1（品牌核验）定稿后改 `apps/web/patches/0002` 里的 `electron-builder*.js`。
+- **应用 ID/名称**：`com.veyrogram.app` 是临时值，待 OQ-1（品牌核验）定稿后改 `apps/web/patches/0002` 里的 `electron-builder*.js`。
 - **代码签名**：macOS 需要 Apple Developer ID 证书 + 公证（`notarytool`）；Windows 需要代码签名证书（OV/EV）。证书和密码放在你的构建机上，不要发给我也不要提交仓库。
 - **更新服务器**：自动更新现在是**关闭**的（没有厂商默认值）。要开启：准备一个 HTTPS 静态站点放 `electron-builder` 产出的 `latest*.yml` 与安装包，构建时设置环境变量 `VEYROGRAM_UPDATE_URL=https://你的更新域名/`；签名更新要求 Windows 证书发布者名与 `publisherName` 一致。
 - 做完后告诉我更新域名，我再补更新通道的端到端测试。
@@ -295,33 +295,13 @@ VG_AUDIT_ANCHOR_TOKEN=<写令牌>
 
 ## E. 监控与可观测性落地（需要你的监控环境）
 
-### C14. 移动端签名、最终包名与推送凭据（Story 1.9，需要你的账号）
-1. **最终包名（PRD OQ-1）**：现在 Android 是 `app.veyrogram.android`、iOS 是 `app.veyrogram.ios`，都是临时值。定下后告诉我（或自己改 `apps/android/patches`、`apps/ios/patches` 里的值）。
-2. **Android 发布签名**：生成自己的 keystore（`keytool -genkeypair -v -keystore veyrogram-release.jks -alias veyrogram -keyalg RSA -keysize 4096 -validity 10000`），密码与文件只放在发布机/CI 密文里，不要提交、不要发给我。
-3. **iOS 签名**：Apple Developer 账号建 App ID（含 Push Notifications 能力）、证书与描述文件，团队 ID 在发布流水线里注入（仓库里已去掉厂商团队 ID）。
-4. **推送**：FCM 需要你自己的 `google-services.json`（放 `app/` 下即启用，不要提交）；小米/华为/OPPO/vivo 的应用 ID 与密钥填 `PushKeys.java` 与 `AndroidManifest.xml`（同样不提交）。现在全部关闭。
-5. **iOS 依赖**：Pods 里 libwebp 1.2.4 受 CVE-2023-4863 影响，升级需要重新 `pod install` 并回归；Pods 里 `tangtaoit` 的几个个人 fork 请你决定是否接受或换源。
-6. **minSdk 26**：Android 7.x 设备不再支持（为替换有漏洞的 fastjson）。如果你必须支持 7.x，告诉我，我改成逐个迁移 28 个文件到别的 JSON 库。
-
-### E1. 加载告警规则并校准阈值
-- 规则文件：`infrastructure/prometheus/veyrogram-alerts.yml`（已通过 `promtool check/test`）。
-- 在你的 Prometheus 配置里增加：
-  ```
-  rule_files: ["/etc/prometheus/rules/veyrogram-alerts.yml"]
-  scrape_configs:
-    - job_name: veyrogram-api
-      authorization: { credentials_file: /etc/prometheus/veyrogram-metrics.token }
-      static_configs: [{ targets: ["127.0.0.1:9101"] }]
-    - job_name: veyrogram-worker
-      authorization: { credentials_file: /etc/prometheus/veyrogram-metrics.token }
-      static_configs: [{ targets: ["127.0.0.1:9103"] }]
-  ```
-  `veyrogram-metrics.token` 内容 = `VG_METRICS_TOKEN`。重载：`promtool check config /etc/prometheus/prometheus.yml && systemctl reload prometheus`。
-- **验证：** Prometheus 页面 Status → Targets 全部 UP；Alerts 页能看到 11 条规则。
-- **阈值是未校准的：** 上线后用真实流量跑一周，再按 P95/错误率实际值调整 `veyrogram-alerts.yml`，并补相应单测。Alertmanager 的接收渠道（邮件/企业微信/钉钉）需你配置。
-
-### E2. 链路追踪后端（可选）
-当前只做了 `traceparent` 传播，没有 span 导出。若要看调用链，需要选择后端（Jaeger/Tempo）并在后续 Story 接入 OTel SDK；这是产品选择，请告诉我是否需要。
+### C14. 移动端签名、推送与已定决策（Story 1.9）
+**你已决定：** 最终包名 `com.veyrogram.app`（Android/iOS/桌面端统一）；Android 签名由我生成；iOS 暂不签名（只产出未签名的 `.app` 与 `.ipa`）；推送凭据留空，上线后在后台填写；Android 支持 6.0 及以上（minSdk 23）；Bugly 保留。
+1. **备份 Android 发布密钥（只有你能做）：** `~/.veyrogram/keys/android-release.jks` 与 `android-signing.env`（权限 600，不在仓库）。丢了就无法再发布更新，请复制到你自己的加密存储里，不要发给我。构建时 `set -a; . ~/.veyrogram/keys/android-signing.env; set +a; tools/build_android.sh <目录>` 会同时产出签名的 release APK。上架商店前，建议改用 Play App Signing 或为正式发布另生成一份密钥。
+2. **iOS 签名（之后）：** 现在的 `.ipa` 未签名，不能直接装到真机。要装机/上架需要 Apple Developer 账号：建 App ID `com.veyrogram.app`（含 Push Notifications）、证书、描述文件，在发布流水线里重签（`codesign` 或 Xcode Archive），团队 ID 在那时注入。
+3. **推送：** FCM 需要你自己的 `google-services.json`（放 `app/` 下即启用，不要提交）；小米/华为/OPPO/vivo 的应用 ID 与密钥填进 `PushKeys.java` 与 `wkpush` 的 `AndroidManifest.xml`。现在全部关闭。
+4. **Bugly：** 保留，但上游写死的厂商应用 ID 已去掉（否则崩溃日志和用户 uid 会报到厂商账号）。注册你自己的 Bugly 应用，把应用 ID 填到 iOS `Info.plist` 的 `VGBuglyAppId`；留空则不上报。Android 端上游本来就没有 Bugly。
+5. **iOS 在模拟器里启动：** 仍未做到（AMR 预编译库只有真机 arm64 切片，需从源码重建或换掉）。真机安装需先签名（第 2 条）。
 
 ---
 

@@ -55,7 +55,7 @@ def main() -> int:
         if "distributionUrl=https" not in w:
             bad.append("gradle wrapper distributionUrl is not https")
     app = (tree / "app/build.gradle").read_text() if (tree / "app/build.gradle").exists() else ""
-    if "namespace 'app.veyrogram.android'" not in app:
+    if "namespace 'com.veyrogram.app'" not in app:
         bad.append("app/build.gradle: namespace is not the fixed VeyroGram namespace")
     for b in bad:
         print("FAIL", b)

@@ -4,7 +4,7 @@
 脚本在 PIN 处建一个一次性 worktree，打补丁，跑源码策略门禁、Gradle 依赖审计、`assembleDebug`、各模块 JVM 单测、APK 身份检查，最后输出 APK 的 sha256。上游检出本身从不被修改。
 
 ## 补丁 0001 做了什么
-- 包名：`namespace` 固定为 `app.veyrogram.android`（R/ViewBinding 在该命名空间生成，不再依赖 `local.properties` 里的 `applicationId`，也不再有 `import com.test.ts.R` 这种硬编码）。`applicationId` 默认同值，可用 `-PvgApplicationId=` 覆盖。**临时值，等 PRD OQ-1 定最终包名。**
+- 包名：`namespace` 固定为 `com.veyrogram.app`（R/ViewBinding 在该命名空间生成，不再依赖 `local.properties` 里的 `applicationId`，也不再有 `import com.test.ts.R` 这种硬编码）。`applicationId` 默认同值，可用 `-PvgApplicationId=` 覆盖。**临时值，等 PRD OQ-1 定最终包名。**
 - 去掉上游厂商标识：`app/google-services.json`（含厂商 Firebase 项目 `tsdddemo`）、`PushKeys` 里的小米/华为/OPPO 凭据、`AndroidManifest` 里的华为/vivo 应用 ID 与密钥。没有运营方提供的 `google-services.json` 时 FCM 关闭，构建照常通过。
 - 依赖安全：`fastjson 1.2.83`（RCE，1.x 无修复）换成 `fastjson 2.0.66`（同一 `com.alibaba.fastjson` API 的兼容层）；`jsoup` 1.21.2 → 1.24.1；强制 `guava 33.8.0-android`。为 fastjson2 把 **minSdk 24 提到 26**（Android 8.0+）。
 - 构建：去掉 `jcenter()` 与 `mvnrepository.com` 仓库；Gradle wrapper 增加 `distributionSha256Sum`；给每个模块补 JUnit（上游的占位单测原本编译不过）；新增 3 个单测（身份、推送凭据为空、fastjson 兼容 API）。

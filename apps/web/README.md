@@ -4,7 +4,7 @@
 
 - `PIN`：固定的上游提交。
 - `patches/0001-…`：依赖改走官方源（`registry.npmjs.org`），锁文件重写并通过 `integrity` 校验；React 18.3、Electron 45、axios 0.35 等升级；用 `resolutions`/重新解析清掉全部高危传递依赖。
-- `patches/0002-…`：`ReactDOM.render` → `createRoot`（含 `flushSync`）；去掉写死的上游 SaaS 地址（`api.botgate.cn` 作为默认 API 与更新服务器）、appId 改为 `app.veyrogram.desktop`（临时，待 OQ-1）。
+- `patches/0002-…`：`ReactDOM.render` → `createRoot`（含 `flushSync`）；去掉写死的上游 SaaS 地址（`api.botgate.cn` 作为默认 API 与更新服务器）、appId 改为 `com.veyrogram.app`（临时，待 OQ-1）。
 - `patches/0003-…`：Electron 加固（见下）。
 
 构建（需要网络访问官方 npm 源）：
