@@ -17,6 +17,15 @@ case "$work" in /*) ;; *) work="$PWD/$work";; esac
 pin=$(tr -d '[:space:]' < "$root/apps/$which/PIN")
 head=$(git -C "$up" rev-parse HEAD)
 git -C "$up" cat-file -e "$pin^{commit}" 2>/dev/null || { echo "upstream $which does not contain pinned commit $pin" >&2; exit 1; }
+# Run a GUI program with a hard time limit, output in a file (Chromium helpers can outlive the app and hold a pipe open; a hung window must fail, not stall).
+bounded() {  # bounded <seconds> <logfile> cmd...
+  local secs=$1 log=$2; shift 2
+  "$@" > "$log" 2>&1 & local pid=$!
+  ( sleep "$secs"; kill -9 "$pid" 2>/dev/null ) & local killer=$!
+  local rc=0; wait "$pid" || rc=$?
+  kill "$killer" 2>/dev/null || true; wait "$killer" 2>/dev/null || true
+  return $rc
+}
 cleanup() { git -C "$up" worktree remove --force "$work" >/dev/null 2>&1 || true; }
 git -C "$up" worktree add --detach -q "$work" "$pin"
 n=0
@@ -39,7 +48,9 @@ if [ "$which" = web ]; then
   out="$work/apps/web/build"
   if [ "${VG_ELECTRON_SMOKE:-0}" = 1 ]; then
     node node_modules/electron/install.js
-    (cd apps/web && ../../node_modules/.bin/electron ${VG_ELECTRON_FLAGS:-} src-election/test/smoke.js)
+    (cd apps/web && bounded 120 "$work/smoke.log" ../../node_modules/.bin/electron ${VG_ELECTRON_FLAGS:-} src-election/test/smoke.js) \
+      || { echo "Electron smoke failed or timed out" >&2; grep -v 'ERROR:' "$work/smoke.log" | tail -40 >&2; exit 1; }
+    grep -E '^(PASS|FAIL|all |[0-9]+ FAILED)' "$work/smoke.log"
   fi
 else
   pnpm install --frozen-lockfile --ignore-scripts >/dev/null 2>&1
@@ -52,7 +63,7 @@ fi
 if [ -n "${VG_RENDER_ELECTRON:-}" ]; then  # render smoke: load the build in a hidden Electron, fail on app errors / empty page, keep a screenshot
   sel='#root'; [ "$which" = manager ] && sel='#app'
   # Output goes to a file, not a pipe: Chromium helper processes can outlive the app and hold a pipe open, which would hang `| grep` forever.
-  rc=0; "$VG_RENDER_ELECTRON" ${VG_ELECTRON_FLAGS:-} "$root/tools/render_smoke.js" "$out" "$work/render-$which.png" "$sel" > "$work/render-$which.log" 2>&1 || rc=$?
+  rc=0; bounded 120 "$work/render-$which.log" "$VG_RENDER_ELECTRON" ${VG_ELECTRON_FLAGS:-} "$root/tools/render_smoke.js" "$out" "$work/render-$which.png" "$sel" || rc=$?
   grep -E '^(\{|ERROR|RENDER|NOTE)' "$work/render-$which.log" || true
   [ "$rc" = 0 ] || { echo "render smoke failed (exit $rc)" >&2; tail -20 "$work/render-$which.log" >&2; exit 1; }
 fi
