@@ -30,6 +30,16 @@ rm -f "$work/app/google-services.json"
 [ ! -d "$root/apps/android/overlay" ] || cp -R "$root/apps/android/overlay/." "$work/"
 echo "patched android at ${pin:0:8} with $n patch(es)"
 python3 -I "$root/tools/check_android.py" "$work" || exit 1
+# Optional FCM: the operator's own Firebase config (never the vendor's, never committed). Copied after the policy check, which forbids the file in the tree.
+if [ -n "${VG_GOOGLE_SERVICES_JSON:-}" ]; then
+  python3 -I - "$VG_GOOGLE_SERVICES_JSON" "${VG_APPLICATION_ID:-com.veyrogram.app}" <<'PY' || exit 1
+import json, sys
+d = json.load(open(sys.argv[1])); pkgs = [c["client_info"]["android_client_info"]["package_name"] for c in d.get("client", [])]
+if sys.argv[2] not in pkgs: sys.exit(f"google-services.json has no client for {sys.argv[2]} (found {pkgs})")
+if d.get("project_info", {}).get("project_id") == "tsdddemo": sys.exit("google-services.json is the upstream vendor project (tsdddemo)")
+PY
+  cp "$VG_GOOGLE_SERVICES_JSON" "$work/app/google-services.json"; echo "FCM enabled with operator google-services.json"
+fi
 cd "$work"
 g="./gradlew --no-daemon -q"
 if [ "${VG_SKIP_AUDIT:-0}" != 1 ]; then

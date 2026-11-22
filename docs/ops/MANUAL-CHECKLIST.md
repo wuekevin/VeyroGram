@@ -299,7 +299,7 @@ VG_AUDIT_ANCHOR_TOKEN=<写令牌>
 **你已决定：** 最终包名 `com.veyrogram.app`（Android/iOS/桌面端统一）；Android 签名由我生成；iOS 暂不签名（只产出未签名的 `.app` 与 `.ipa`）；推送凭据留空，上线后在后台填写；Android 支持 6.0 及以上（minSdk 23）；Bugly 保留。
 1. **备份 Android 发布密钥（只有你能做）：** `~/.veyrogram/keys/android-release.jks` 与 `android-signing.env`（权限 600，不在仓库）。丢了就无法再发布更新，请复制到你自己的加密存储里，不要发给我。构建时 `set -a; . ~/.veyrogram/keys/android-signing.env; set +a; tools/build_android.sh <目录>` 会同时产出签名的 release APK。上架商店前，建议改用 Play App Signing 或为正式发布另生成一份密钥。
 2. **iOS 签名（之后）：** 现在的 `.ipa` 未签名，不能直接装到真机。要装机/上架需要 Apple Developer 账号：建 App ID `com.veyrogram.app`（含 Push Notifications）、证书、描述文件，在发布流水线里重签（`codesign` 或 Xcode Archive），团队 ID 在那时注入。
-3. **推送：** FCM 需要你自己的 `google-services.json`（放 `app/` 下即启用，不要提交）；小米/华为/OPPO/vivo 的应用 ID 与密钥填进 `PushKeys.java` 与 `wkpush` 的 `AndroidManifest.xml`。现在全部关闭。
+3. **推送：** FCM 需要你自己的 `google-services.json`（构建时 `VG_GOOGLE_SERVICES_JSON=/绝对路径/google-services.json bash tools/build_android.sh <dir>` 即启用；脚本会校验包名并拒绝厂商项目；不要提交）；小米/华为/OPPO/vivo 的应用 ID 与密钥填进 `PushKeys.java` 与 `wkpush` 的 `AndroidManifest.xml`。现在全部关闭。
 4. **Bugly：** 保留，但上游写死的厂商应用 ID 已去掉（否则崩溃日志和用户 uid 会报到厂商账号）。注册你自己的 Bugly 应用，把应用 ID 填到 iOS `Info.plist` 的 `VGBuglyAppId`；留空则不上报。Android 端上游本来就没有 Bugly。
 5. **iOS 在模拟器里启动：** 仍未做到（AMR 预编译库只有真机 arm64 切片，需从源码重建或换掉）。真机安装需先签名（第 2 条）。
 

@@ -17,3 +17,5 @@
 
 ## 验证过的 / 没验证的
 见 `docs/stories/1.9-*.md` 的 Dev Agent Record。
+
+**启用 FCM：** 构建时设置 `VG_GOOGLE_SERVICES_JSON` 指向你自己的 `google-services.json`，脚本校验包名与非厂商项目后复制进 `app/`；未设置则 FCM 关闭。
