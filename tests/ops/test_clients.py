@@ -73,7 +73,7 @@ win.webContents.send("update-available", 1);
 '''
 
 
-def tree(main=MAIN, preload=PRELOAD, electron="^45.4.1", builder="module.exports = { asar: true };\n"):
+def tree(main=MAIN, preload=PRELOAD, electron="45.4.1", builder="module.exports = { asar: true };\n"):
     d = tempfile.mkdtemp()
     write(d, "package.json", '{"devDependencies":{"electron":"%s"}}' % electron)
     write(d, "src-election/main/security.ts", SECURITY)
@@ -98,8 +98,38 @@ r = elec(tree(main=MAIN + 'onTrusted("new-channel", () => {});\n')); check("elec
 r = elec(tree(preload=PRELOAD.replace('["check-update"]', '["check-update", "orphan"]'))); check("electron: allowlisted channel without a handler is refused", r.returncode == 1 and "orphan" in r.stdout)
 r = elec(tree(main=MAIN + 'win.webContents.send("leak", 1);\n')); check("electron: sending a non-allowlisted event is refused", r.returncode == 1 and "leak" in r.stdout)
 r = elec(tree(electron="26.0.0")); check("electron: outdated Electron is refused", r.returncode == 1 and "older" in r.stdout)
+r = elec(tree(electron="^45.4.1")); check("electron: a version range is refused", r.returncode == 1 and "exact" in r.stdout)
 check("electron: download mirror is refused", elec(tree(builder='module.exports = { electronDownload: { mirror: "https://x/" } };\n')).returncode == 1)
 check("electron: asar disabled is refused", elec(tree(builder="module.exports = { asar: false };\n")).returncode == 1)
 check("electron: unchecked preload passthrough is refused", elec(tree(preload=PRELOAD.replace("if (!has(SEND_CHANNELS, channel)) throw 1;", ""))).returncode == 1)
+
+# ---- npm licence gate -------------------------------------------------------------------------------------------------
+def pkgtree(**pk):
+    d = tempfile.mkdtemp()
+    for name, meta in pk.items():
+        files = meta.pop("_files", {})
+        write(d, f"node_modules/{name}/package.json", __import__("json").dumps({"name": name, "version": "1.0.0", **meta}))
+        for fn, txt in files.items():
+            write(d, f"node_modules/{name}/{fn}", txt)
+    return d
+
+
+def lic(d):
+    return run("npm_supply.py", "licenses", d)
+
+
+check("npm licences: permissive packages pass", lic(pkgtree(a={"license": "MIT"}, b={"license": "(MIT OR Apache-2.0)"})).returncode == 0)
+check("npm licences: GPL is refused", lic(pkgtree(a={"license": "GPL-3.0"})).returncode == 1)
+check("npm licences: AGPL is refused", lic(pkgtree(a={"license": "AGPL-3.0-only"})).returncode == 1)
+check("npm licences: dual licence with a permissive alternative passes", lic(pkgtree(a={"license": "(BSD-3-Clause OR GPL-2.0)"})).returncode == 0)
+check("npm licences: AND with a copyleft term is refused", lic(pkgtree(a={"license": "MIT AND GPL-3.0"})).returncode == 1)
+check("npm licences: missing licence is refused", lic(pkgtree(a={})).returncode == 1)
+check("npm licences: a commercial 'SEE LICENSE IN' is refused", lic(pkgtree(a={"license": "SEE LICENSE IN LICENSE.md"})).returncode == 1)
+check("npm licences: UNLICENSED is refused", lic(pkgtree(a={"license": "UNLICENSED"})).returncode == 1)
+check("npm licences: no license field but an MIT text passes", lic(pkgtree(a={"_files": {"LICENSE": "Permission is hereby granted, free of charge, to any person obtaining a copy"}})).returncode == 0)
+check("npm licences: an empty tree is refused", lic(tempfile.mkdtemp()).returncode == 2)
+t = pkgtree(a={"license": "MIT"}); o = os.path.join(t, "sbom.json")
+r = run("npm_supply.py", "sbom", t, "-o", o); doc = __import__("json").load(open(o))
+check("npm sbom: CycloneDX 1.5 with purl and licence", r.returncode == 0 and doc["specVersion"] == "1.5" and doc["components"][0]["purl"] == "pkg:npm/a@1.0.0" and doc["components"][0]["licenses"][0]["expression"] == "MIT")
 
 sys.exit(1 if fails else 0)

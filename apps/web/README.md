@@ -23,9 +23,12 @@ VG_ELECTRON_SMOKE=1 bash tools/build_clients.sh web …       # 另外下载 Ele
 - 自动更新服务器改为构建时注入（`VEYROGRAM_UPDATE_URL`），为空则**关闭自动更新**；没有厂商默认值。
 - 门禁：`tools/check_electron_security.py`（静态：不安全设置、裸 IPC、白名单与处理器不一致、Electron 过旧、下载镜像、禁用 asar、非 https 更新地址）+ `src-election/test/smoke.js`（运行时：真实预加载下 `require`/`process` 不可用、未知通道被拒、导航/弹窗被拦）。
 
-## 已知限制（诚实说明）
-- **没有在界面里点过**：构建通过、Electron 运行时烟雾测试通过，但 React 18 的整体界面行为没有人工验证。`qrcode.react@1`、`react-spinners@0.11` 的 peer 声明仍是 React ≤17（yarn 有警告），能构建，运行效果需要在 Story 1.14 前后在真机/浏览器上看一遍。
-- **选 React 18 而非 19**：Semi UI 2.x 的 Toast/Modal 仍用 `ReactDOM.render`，React 19 已移除；18.3 是能保持现有界面不坏的最新版本。是否继续升 19 取决于是否换 UI 库（设计门禁之后再定）。
-- **Electron 打包、签名、公证、自动更新通道没有做**（需要证书与更新服务器，见 `docs/ops/MANUAL-CHECKLIST.md` C13）；`electron-builder` 配置只去掉了镜像与厂商地址。
-- Tauri 目录（`src-tauri`）未升级也未纳入构建，只把更新端点指向保留域名 `updates.invalid`；本项目桌面端选 Electron。
-- CI 里的 Electron 烟雾测试在 Linux 上用 `--no-sandbox` + xvfb 运行（runner 没有 SUID 沙箱），`webPreferences.sandbox` 仍在静态与运行时检查中断言；真正的沙箱在 macOS 上已跑过。
+## 验证情况与已知限制
+- **已验证（本机 macOS）：** 构建；Electron 45 运行时烟雾测试 20 项；`electron-builder --mac --dir`（未签名）打出 `.app` 并实际启动 10 秒无报错（日志里只有“自动更新已关闭”）；登录页在隐藏的 Electron 窗口里渲染（`tools/render_smoke.js`），点“登录”弹出 Semi UI 提示（React 18 下 Toast 正常）、点“扫描登录”切换页面，均无应用错误；`qrcode.react@1`、`react-spinners@0.11` 在 React 18 下能渲染（仅有 defaultProps 弃用警告）。
+- **没有验证：** 登录之后的聊天主界面（需要后端，等 Story 1.14）；扫码页的二维码（需要后端发码）；macOS 签名/公证、Windows/Linux 安装包。
+- **选 React 18 而非 19**：Semi UI 2.x 的 Toast/Modal 仍用 `ReactDOM.render`，React 19 已移除。
+- **打包、签名、更新通道**需要证书与更新服务器（清单 C13）。`electron` 必须固定精确版本（electron-builder 解析不了范围，打包时发现的问题，已由门禁强制）。
+- 安全公告：高危/严重为 0；`moderate` 剩 5 条（`glob`/`minimatch` 需跨大版本、`@babel/runtime@7.4.5` 被上游精确锁定等），不在门禁内。
+- npm 依赖有许可证门禁与 CycloneDX SBOM（`tools/npm_supply.py`，1554 个包）。`keypair`/`node-forge` 是“BSD 或 GPL”双许可，按 BSD 取用。
+- Tauri 目录（`src-tauri`）未升级也未纳入构建，更新端点指向保留域名 `updates.invalid`；桌面端选 Electron。
+- CI 的 Electron 烟雾/渲染测试在 Linux 上用 `--no-sandbox` + xvfb（runner 没有 SUID 沙箱）；真正的沙箱在 macOS 上跑过。

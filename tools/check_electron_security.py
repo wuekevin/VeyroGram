@@ -75,6 +75,8 @@ def check(web: pathlib.Path) -> list[str]:
     m = re.search(r"(\d+)\.", spec)
     if not m:
         errs.append("package.json: electron version not found")
+    elif not re.fullmatch(r"\d+\.\d+\.\d+", spec):
+        errs.append(f"electron {spec} must be an exact version (electron-builder cannot resolve a range)")
     elif int(m.group(1)) < MIN_ELECTRON_MAJOR:
         errs.append(f"electron {spec} is older than supported major {MIN_ELECTRON_MAJOR}")
     for cfg in web.glob("electron-builder*.js"):

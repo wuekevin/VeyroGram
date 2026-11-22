@@ -7,7 +7,11 @@
 
 构建：`bash tools/build_clients.sh manager /绝对路径/新目录`（冻结安装 → 审计（高危/严重必须为 0，或有批准的豁免）→ 构建 → 输出哈希）。
 
-## 已知限制（诚实说明）
-- **没有在浏览器里点过**：`vite build` 通过且两次干净构建产物哈希一致，但 vite 6/vue-i18n 11 升级后的界面没有人工验证；`vue-tsc` 在上游代码上本来就有类型错误（构建脚本不跑它），这次没有修。
+## 许可证发现：`@fancyapps/ui`
+许可证门禁发现 Manager 依赖的 `@fancyapps/ui`（Fancybox 5）是**商业许可**（“使用需同意其 License Agreement，价格见 fancyapps.com/pricing”），用于 3 处图片预览。已移除，改用 Element Plus 的 `ElImageViewer`（MIT，`src/utils/imagePreview.ts`）。
+
+## 验证情况与已知限制
+- **已验证（本机）：** 冻结安装、构建、两次干净构建哈希一致、审计高危/严重为 0、许可证门禁与 SBOM（788 个包）、登录页在隐藏的 Electron 窗口里渲染无应用错误。
+- **没有验证：** 登录之后的页面；**新的图片预览组件没有在页面里点过**（只验证了它能编译进构建）；vite 6、vue-i18n 11、element-plus 升级后的其余界面；`vue-tsc` 在上游代码上本来就有类型错误（构建脚本不跑它），没有修。
+- 安全公告：`moderate` 剩 3 条（`echarts` 需升大版本 6、`minimatch` 跨大版本、`vue-template-compiler` 无修复版本）。
 - Manager 的授权风险已由你接受（Story 1.10 配置/决策点）；这里没有改它的业务代码。
-- 审计只覆盖 npm 注册表公开的公告；`moderate` 级别仍有若干条未处理，不在本 Story 门禁内。

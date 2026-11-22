@@ -1,0 +1,4 @@
+{
+  "_comment": "Waivers for the npm licence gate (Story 1.10). Each: module, version, reason, approver, expires (YYYY-MM-DD). Approvals are the owner's; the agent never adds entries.",
+  "waivers": []
+}

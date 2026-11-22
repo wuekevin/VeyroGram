@@ -136,9 +136,9 @@ jobs:
       - name: Web + desktop (frozen install, audit gate, build, Electron config check, runtime smoke under xvfb)
         run: |
           sudo apt-get update && sudo apt-get install -y xvfb libgbm1 libasound2t64 libgtk-3-0 libnss3
-          VG_ELECTRON_SMOKE=1 VG_ELECTRON_FLAGS="--no-sandbox" xvfb-run -a bash tools/build_clients.sh web "$RUNNER_TEMP/web"
+          VG_ELECTRON_SMOKE=1 VG_ELECTRON_FLAGS="--no-sandbox" VG_RENDER_ELECTRON="$RUNNER_TEMP/web/node_modules/.bin/electron" xvfb-run -a bash tools/build_clients.sh web "$RUNNER_TEMP/web"
       - name: Manager (frozen install, audit gate, build)
-        run: bash tools/build_clients.sh manager "$RUNNER_TEMP/manager"
+        run: VG_ELECTRON_FLAGS="--no-sandbox" VG_RENDER_ELECTRON="$RUNNER_TEMP/web/node_modules/.bin/electron" xvfb-run -a bash tools/build_clients.sh manager "$RUNNER_TEMP/manager"
       - name: Reproducibility - a second clean build gives the same output hash
         run: |
           a=$(VG_SKIP_AUDIT=1 bash tools/build_clients.sh manager "$RUNNER_TEMP/manager2" | sed -n 's/.*sha256 //p')
