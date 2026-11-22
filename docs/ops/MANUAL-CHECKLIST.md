@@ -301,7 +301,7 @@ VG_AUDIT_ANCHOR_TOKEN=<写令牌>
 2. **iOS 签名（之后）：** 现在的 `.ipa` 未签名，不能直接装到真机。要装机/上架需要 Apple Developer 账号：建 App ID `com.veyrogram.app`（含 Push Notifications）、证书、描述文件，在发布流水线里重签（`codesign` 或 Xcode Archive），团队 ID 在那时注入。
 3. **推送：** FCM 需要你自己的 `google-services.json`（构建时 `VG_GOOGLE_SERVICES_JSON=/绝对路径/google-services.json bash tools/build_android.sh <dir>` 即启用；脚本会校验包名并拒绝厂商项目；不要提交）；小米/华为/OPPO/vivo 的应用 ID 与密钥填进 `PushKeys.java` 与 `wkpush` 的 `AndroidManifest.xml`。现在全部关闭。
 4. **Bugly：** 保留，但上游写死的厂商应用 ID 已去掉（否则崩溃日志和用户 uid 会报到厂商账号）。注册你自己的 Bugly 应用，把应用 ID 填到 iOS `Info.plist` 的 `VGBuglyAppId`；留空则不上报。Android 端上游本来就没有 Bugly。
-5. **iOS 在模拟器里启动：** 仍未做到（AMR 预编译库只有真机 arm64 切片，需从源码重建或换掉）。真机安装需先签名（第 2 条）。
+5. **iOS 在模拟器里启动：** 已做到（见 `apps/ios/README.md`，模拟器构建用桩库替代 AMR 与 Bugly 的预编译库，因此模拟器里没有语音消息编解码与崩溃上报）。真机安装需先签名（第 2 条）；真机上的语音与 Bugly 仍未运行验证。
 
 ---
 

@@ -19,3 +19,5 @@
 - 产物可复现性见故事记录。
 
 **传输与存储加固（补丁 0002）：** 上游把 ATS 整个关掉（`NSAllowsArbitraryLoads=true`）；API 客户端、图片下载（SDWebImage 的 allow-invalid 选项被几十处调用传入）、视频播放都信任任意证书且不校验主机名；登录令牌和 IM 令牌以明文存在 `NSUserDefaults`（会进 iTunes/iCloud 备份）。0002：ATS 开启并只放行本地网络（开发用 `http://127.0.0.1`），API/图片/视频恢复系统证书与主机名校验，会话改存钥匙串（`AfterFirstUnlockThisDeviceOnly`，不进备份、不迁移设备；旧版 UserDefaults 里的会话启动时迁入并删除；全新安装时清掉可能残留的钥匙串旧令牌）。`check_ios.py` 拦这些回退。
+
+**模拟器启动（已解决）：** `libopencore-amr*.a`、`libvo-amrwbenc.a` 与 `Bugly.framework` 的 arm64 切片是真机的，iOS 26 模拟器只跑 arm64，链接会报 `built for 'iOS'`。`build_ios.sh` 仅在**模拟器构建**时把它们换成同符号的桩库（AMR 为弱符号空实现，Bugly 为空的 `Bugly`/`BuglyConfig`），并加 `ARCHS=arm64 EXCLUDED_ARCHS=`（Podfile 里原本把模拟器 arm64 排除了）；真机构建前用 `git checkout` 还原真实库。所以：模拟器里没有语音消息编解码和崩溃上报；真机包用的是真实库。结果：模拟器构建能装进 iPhone 17 模拟器（iOS 26.5）并启动到登录页，进程保持运行。
