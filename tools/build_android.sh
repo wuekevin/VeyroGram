@@ -51,6 +51,9 @@ apk="$work/app/build/outputs/apk/debug/app-debug.apk"
 aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
 badging=$("$aapt" dump badging "$apk")
 case "$badging" in "package: name='com.veyrogram.app'"*) ;; *)  echo "APK package is not com.veyrogram.app" >&2; exit 1;; esac
+mf=$("$aapt" dump xmltree --file AndroidManifest.xml "$apk")
+case "$mf" in *"android:allowBackup("*")=false"*) ;; *) echo "merged manifest: allowBackup is not false" >&2; exit 1;; esac
+case "$mf" in *"android:dataExtractionRules("*) ;; *) echo "merged manifest: dataExtractionRules missing" >&2; exit 1;; esac
 case "$badging" in *"minSdkVersion:'23'"*) ;; *) echo "minSdk is not 23 (Android 6.0)" >&2; exit 1;; esac
 tests=$(find . -path '*/test-results/testDebugUnitTest/TEST-*.xml' | wc -l | tr -d ' ')
 fails=$(grep -l '<failure\|<error' $(find . -path '*/test-results/testDebugUnitTest/TEST-*.xml') 2>/dev/null | wc -l | tr -d ' ') || true
@@ -65,5 +68,8 @@ if [ -n "${VG_KEYSTORE:-}" ]; then
   rel="$work/app/build/outputs/apk/release/app-release.apk"
   apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
   "$apksigner" verify "$rel" || { echo "release APK signature does not verify" >&2; exit 1; }
+  rmf=$("$aapt" dump xmltree --file AndroidManifest.xml "$rel")
+  case "$rmf" in *"android:allowBackup("*")=false"*) ;; *) echo "release manifest: allowBackup is not false" >&2; exit 1;; esac
+  case "$rmf" in *"android:usesCleartextTraffic("*")=false"*) ;; *) echo "release manifest: cleartext traffic is not disabled" >&2; exit 1;; esac
   echo "release apk (signed) sha256 $(shasum -a 256 "$rel" | cut -d' ' -f1)"
 fi

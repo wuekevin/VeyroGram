@@ -19,3 +19,5 @@
 见 `docs/stories/1.9-*.md` 的 Dev Agent Record。
 
 **启用 FCM：** 构建时设置 `VG_GOOGLE_SERVICES_JSON` 指向你自己的 `google-services.json`，脚本校验包名与非厂商项目后复制进 `app/`；未设置则 FCM 关闭。
+
+**传输与备份加固（补丁 0002）：** 上游的 `SSLSocketClient` / `UnsafeOkHttpClient` 对所有证书和主机名都放行（可被中间人攻击），`BridgeWebViewClient` 遇到证书错误也继续加载，清单里 `allowBackup=true` 且允许明文 HTTP。0002 删除了前两者（改用系统默认校验）、WebView 遇证书错误改为取消、`allowBackup=false` 并用 `dataExtractionRules`/`fullBackupContent` 排除全部备份与设备迁移、主清单禁用明文（仅 `src/debug` 放开，因为默认 API 地址是 http://127.0.0.1:8080）。`check_android.py` 与 `build_android.sh`（检查合并后的 APK 清单）会拦回退。

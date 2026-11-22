@@ -38,6 +38,29 @@ def main() -> int:
                 bad.append(f"{p.relative_to(tree)}: vendor credential/identity string {v}")
         if re.search(r"\bcom\.test\.ts\b", t):
             bad.append(f"{p.relative_to(tree)}: upstream demo package com.test.ts")
+    for p in files(tree, {".java", ".kt"}):
+        rel = p.relative_to(tree).as_posix()
+        if "/src/test/" in "/" + rel or "/src/androidTest/" in "/" + rel:
+            continue
+        t = p.read_text(errors="replace")
+        if re.search(r"checkServerTrusted\s*\([^)]*\)[^{;]*\{\s*(//[^\n]*\s*)*\}", t):
+            bad.append(f"{rel}: TrustManager accepts every server certificate")
+        if re.search(r"hostnameVerifier\s*\([^;]*->\s*true|boolean\s+verify\s*\([^)]*\)\s*\{\s*return\s+true\s*;", t, re.S):
+            bad.append(f"{rel}: HostnameVerifier accepts every host")
+        if re.search(r"onReceivedSslError[^}]*\.proceed\s*\(\s*\)", t, re.S):
+            bad.append(f"{rel}: WebView continues past TLS errors")
+    for p in tree.rglob("AndroidManifest.xml"):
+        rel = p.relative_to(tree).as_posix()
+        if any(e in "/" + rel for e in EXCLUDE) or "/src/debug/" in "/" + rel or "/src/test/" in "/" + rel or "/src/androidTest/" in "/" + rel:
+            continue
+        t = p.read_text(errors="replace")
+        if re.search(r'android:usesCleartextTraffic\s*=\s*"true"', t):
+            bad.append(f"{rel}: cleartext traffic allowed outside debug builds")
+        if rel == "app/src/main/AndroidManifest.xml":
+            if not re.search(r'android:allowBackup\s*=\s*"false"', t):
+                bad.append(f"{rel}: allowBackup is not false")
+            if "android:dataExtractionRules" not in t or "android:fullBackupContent" not in t:
+                bad.append(f"{rel}: backup/data-extraction rules missing")
     for name in ("google-services.json", "agconnect-services.json"):
         for p in tree.rglob(name):
             if not any(e in "/" + p.relative_to(tree).as_posix() for e in EXCLUDE):

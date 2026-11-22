@@ -1,0 +1,281 @@
+diff --git a/app/src/debug/AndroidManifest.xml b/app/src/debug/AndroidManifest.xml
+new file mode 100644
+index 0000000..49df760
+--- /dev/null
++++ b/app/src/debug/AndroidManifest.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Debug builds only: the default API URL is http://127.0.0.1:8080, so allow cleartext there. Release stays HTTPS-only. -->
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:tools="http://schemas.android.com/tools">
++    <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic" />
++</manifest>
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index c4e1855..f008fc2 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -103,7 +103,10 @@
+ 
+     <application
+         android:name="com.test.demo2.TSApplication"
+-        android:allowBackup="true"
++        android:allowBackup="false"
++        tools:replace="android:allowBackup"
++        android:dataExtractionRules="@xml/data_extraction_rules"
++        android:fullBackupContent="@xml/backup_rules"
+         android:hardwareAccelerated="true"
+         android:icon="@mipmap/ic_logo"
+         android:label="@string/app_name"
+@@ -113,7 +116,7 @@
+         android:screenOrientation="portrait"
+         android:supportsRtl="true"
+         android:theme="@style/AppTheme"
+-        android:usesCleartextTraffic="true"
++        android:usesCleartextTraffic="false"
+         tools:ignore="GoogleAppIndexingWarning">
+ 
+         <activity
+diff --git a/app/src/main/res/xml/backup_rules.xml b/app/src/main/res/xml/backup_rules.xml
+index fa0f996..f64b126 100644
+--- a/app/src/main/res/xml/backup_rules.xml
++++ b/app/src/main/res/xml/backup_rules.xml
+@@ -1,13 +1,9 @@
+-<?xml version="1.0" encoding="utf-8"?><!--
+-   Sample backup rules file; uncomment and customize as necessary.
+-   See https://developer.android.com/guide/topics/data/autobackup
+-   for details.
+-   Note: This file is ignored for devices older that API 31
+-   See https://developer.android.com/about/versions/12/backup-restore
+--->
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Nothing is backed up (API < 31): tokens, the message database and keys must not leave the device. -->
+ <full-backup-content>
+-    <!--
+-   <include domain="sharedpref" path="."/>
+-   <exclude domain="sharedpref" path="device.xml"/>
+--->
+-</full-backup-content>
+\ No newline at end of file
++    <exclude domain="root" path="."/>
++    <exclude domain="file" path="."/>
++    <exclude domain="database" path="."/>
++    <exclude domain="sharedpref" path="."/>
++    <exclude domain="external" path="."/>
++</full-backup-content>
+diff --git a/app/src/main/res/xml/data_extraction_rules.xml b/app/src/main/res/xml/data_extraction_rules.xml
+index 9ee9997..1d2218a 100644
+--- a/app/src/main/res/xml/data_extraction_rules.xml
++++ b/app/src/main/res/xml/data_extraction_rules.xml
+@@ -1,19 +1,18 @@
+-<?xml version="1.0" encoding="utf-8"?><!--
+-   Sample data extraction rules file; uncomment and customize as necessary.
+-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
+-   for details.
+--->
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Nothing is backed up or transferred (API >= 31). -->
+ <data-extraction-rules>
+     <cloud-backup>
+-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
+-        <include .../>
+-        <exclude .../>
+-        -->
++        <exclude domain="root" path="."/>
++        <exclude domain="file" path="."/>
++        <exclude domain="database" path="."/>
++        <exclude domain="sharedpref" path="."/>
++        <exclude domain="external" path="."/>
+     </cloud-backup>
+-    <!--
+     <device-transfer>
+-        <include .../>
+-        <exclude .../>
++        <exclude domain="root" path="."/>
++        <exclude domain="file" path="."/>
++        <exclude domain="database" path="."/>
++        <exclude domain="sharedpref" path="."/>
++        <exclude domain="external" path="."/>
+     </device-transfer>
+-    -->
+-</data-extraction-rules>
+\ No newline at end of file
++</data-extraction-rules>
+diff --git a/wkbase/src/main/java/com/chat/base/glide/OkHttpUrlLoader.java b/wkbase/src/main/java/com/chat/base/glide/OkHttpUrlLoader.java
+index 08da0a7..c5e9d50 100644
+--- a/wkbase/src/main/java/com/chat/base/glide/OkHttpUrlLoader.java
++++ b/wkbase/src/main/java/com/chat/base/glide/OkHttpUrlLoader.java
+@@ -49,7 +49,7 @@ public class OkHttpUrlLoader implements ModelLoader<GlideUrl, InputStream> {
+             if (internalClient == null) {
+                 synchronized (Factory.class) {
+                     if (internalClient == null) {
+-                        internalClient = UnsafeOkHttpClient.getUnsafeOkHttpClient();
++                        internalClient = new okhttp3.OkHttpClient.Builder().protocols(java.util.Collections.singletonList(okhttp3.Protocol.HTTP_1_1)).build();
+                     }
+                 }
+             }
+diff --git a/wkbase/src/main/java/com/chat/base/glide/UnsafeOkHttpClient.java b/wkbase/src/main/java/com/chat/base/glide/UnsafeOkHttpClient.java
+deleted file mode 100644
+index 989b7fa..0000000
+--- a/wkbase/src/main/java/com/chat/base/glide/UnsafeOkHttpClient.java
++++ /dev/null
+@@ -1,56 +0,0 @@
+-package com.chat.base.glide;
+-
+-import java.security.KeyManagementException;
+-import java.security.NoSuchAlgorithmException;
+-import java.security.cert.CertificateException;
+-import java.security.cert.X509Certificate;
+-import java.util.Collections;
+-
+-import javax.net.ssl.HostnameVerifier;
+-import javax.net.ssl.SSLContext;
+-import javax.net.ssl.SSLSession;
+-import javax.net.ssl.SSLSocketFactory;
+-import javax.net.ssl.TrustManager;
+-import javax.net.ssl.X509TrustManager;
+-
+-import okhttp3.OkHttpClient;
+-import okhttp3.Protocol;
+-
+-public class UnsafeOkHttpClient {
+-    public static OkHttpClient getUnsafeOkHttpClient() {
+-        try {
+-            X509TrustManager x509TrustManager = new X509TrustManager() {
+-                @Override
+-                public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+-                }
+-
+-                @Override
+-                public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+-                }
+-
+-                @Override
+-                public X509Certificate[] getAcceptedIssuers() {
+-                    return new X509Certificate[]{};
+-                }
+-            };
+-            SSLContext sslContext = SSLContext.getInstance("SSL");
+-            sslContext.init(null, new TrustManager[]{x509TrustManager}, new java.security.SecureRandom());
+-            SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+-            return new OkHttpClient
+-                    .Builder()
+-                    .sslSocketFactory(sslSocketFactory, x509TrustManager)
+-                    .protocols(Collections.singletonList(Protocol.HTTP_1_1))
+-                    .hostnameVerifier(new HostnameVerifier() {
+-                        @Override
+-                        public boolean verify(String s, SSLSession sslSession) {
+-                            return true;
+-                        }
+-                    }).build();
+-        } catch (NoSuchAlgorithmException e) {
+-            e.printStackTrace();
+-        } catch (KeyManagementException e) {
+-            e.printStackTrace();
+-        }
+-        return null;
+-    }
+-}
+diff --git a/wkbase/src/main/java/com/chat/base/jsbrigde/BridgeWebViewClient.java b/wkbase/src/main/java/com/chat/base/jsbrigde/BridgeWebViewClient.java
+index 098b217..2e35ebb 100644
+--- a/wkbase/src/main/java/com/chat/base/jsbrigde/BridgeWebViewClient.java
++++ b/wkbase/src/main/java/com/chat/base/jsbrigde/BridgeWebViewClient.java
+@@ -26,7 +26,7 @@ public class BridgeWebViewClient extends WebViewClient {
+ 
+     @Override
+     public void onReceivedSslError(WebView webView, SslErrorHandler sslErrorHandler, SslError sslError) {
+-        sslErrorHandler.proceed();
++        sslErrorHandler.cancel(); // never continue past a certificate error
+     }
+ 
+     @Override
+diff --git a/wkbase/src/main/java/com/chat/base/net/OkHttpUtils.java b/wkbase/src/main/java/com/chat/base/net/OkHttpUtils.java
+index 95e65de..18f59c6 100644
+--- a/wkbase/src/main/java/com/chat/base/net/OkHttpUtils.java
++++ b/wkbase/src/main/java/com/chat/base/net/OkHttpUtils.java
+@@ -6,11 +6,8 @@ import com.chat.base.WKBaseApplication;
+ import com.chat.base.utils.WKNetUtil;
+ 
+ import java.io.File;
+-import java.security.cert.X509Certificate;
+ import java.util.concurrent.TimeUnit;
+ 
+-import javax.net.ssl.X509TrustManager;
+-
+ import okhttp3.Cache;
+ import okhttp3.CacheControl;
+ import okhttp3.ConnectionPool;
+@@ -48,23 +45,6 @@ public class OkHttpUtils {
+                             .connectTimeout(60 * 10, TimeUnit.SECONDS)
+                             .readTimeout(60 * 10, TimeUnit.SECONDS)
+                             .writeTimeout(60 * 10, TimeUnit.SECONDS).connectionPool(new ConnectionPool(5, 5, TimeUnit.SECONDS))
+-                            .sslSocketFactory(SSLSocketClient.getSSLSocketFactory(), new X509TrustManager() {
+-                                @Override
+-                                public void checkClientTrusted(X509Certificate[] chain, String authType) {
+-
+-                                }
+-
+-                                @Override
+-                                public void checkServerTrusted(X509Certificate[] chain, String authType) {
+-
+-                                }
+-
+-                                @Override
+-                                public X509Certificate[] getAcceptedIssuers() {
+-                                    return new X509Certificate[0];
+-                                }
+-                            })
+-                            .hostnameVerifier(SSLSocketClient.getHostnameVerifier())
+                             .addInterceptor(mRewriteCacheControlInterceptor)
+                             .addInterceptor(new CommonRequestParamInterceptor())
+                             .addNetworkInterceptor(mRewriteCacheControlInterceptor)
+diff --git a/wkbase/src/main/java/com/chat/base/net/SSLSocketClient.java b/wkbase/src/main/java/com/chat/base/net/SSLSocketClient.java
+deleted file mode 100644
+index 6c2aa42..0000000
+--- a/wkbase/src/main/java/com/chat/base/net/SSLSocketClient.java
++++ /dev/null
+@@ -1,45 +0,0 @@
+-package com.chat.base.net;
+-
+-import java.security.SecureRandom;
+-import java.security.cert.X509Certificate;
+-
+-import javax.net.ssl.HostnameVerifier;
+-import javax.net.ssl.SSLContext;
+-import javax.net.ssl.SSLSocketFactory;
+-import javax.net.ssl.TrustManager;
+-import javax.net.ssl.X509TrustManager;
+-
+-public class SSLSocketClient {
+-    public static SSLSocketFactory getSSLSocketFactory() {
+-        try {
+-            SSLContext sslContext = SSLContext.getInstance("SSL");
+-            sslContext.init(null, getTrustManager(), new SecureRandom());
+-            return sslContext.getSocketFactory();
+-        } catch (Exception e) {
+-            throw new RuntimeException(e);
+-        }
+-    }
+-
+-    //获取TrustManager
+-    private static TrustManager[] getTrustManager() {
+-        return new TrustManager[]{new X509TrustManager() {
+-            @Override
+-            public void checkClientTrusted(X509Certificate[] chain, String authType) {
+-            }
+-
+-            @Override
+-            public void checkServerTrusted(X509Certificate[] chain, String authType) {
+-            }
+-
+-            @Override
+-            public X509Certificate[] getAcceptedIssuers() {
+-                return new X509Certificate[]{};
+-            }
+-        }};
+-    }
+-
+-    //获取HostnameVerifier
+-    public static HostnameVerifier getHostnameVerifier() {
+-        return (s, sslSession) -> true;
+-    }
+-}

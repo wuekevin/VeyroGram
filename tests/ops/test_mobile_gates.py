@@ -69,6 +69,26 @@ r = run("check_android.py", t); check("android: a non-fixed namespace is refused
 t = good_tree(); write(t, "app/build/generated/K.java", 'class K { static final String A = "108677047"; }\n')
 check("android: build outputs are not scanned", run("check_android.py", t).returncode == 0)
 
+GOOD_MANIFEST = '<manifest><application android:allowBackup="false" android:usesCleartextTraffic="false" android:dataExtractionRules="@xml/d" android:fullBackupContent="@xml/b"/></manifest>'
+t = good_tree(); write(t, "app/src/main/AndroidManifest.xml", GOOD_MANIFEST)
+check("android: a hardened manifest passes", run("check_android.py", t).returncode == 0)
+t = good_tree(); write(t, "app/src/main/AndroidManifest.xml", GOOD_MANIFEST.replace('allowBackup="false"', 'allowBackup="true"'))
+r = run("check_android.py", t); check("android: allowBackup=true is refused", r.returncode == 1 and "allowBackup" in r.stdout)
+t = good_tree(); write(t, "app/src/main/AndroidManifest.xml", GOOD_MANIFEST.replace('usesCleartextTraffic="false"', 'usesCleartextTraffic="true"'))
+r = run("check_android.py", t); check("android: cleartext in the main manifest is refused", r.returncode == 1 and "cleartext" in r.stdout)
+t = good_tree(); write(t, "app/src/main/AndroidManifest.xml", GOOD_MANIFEST); write(t, "app/src/debug/AndroidManifest.xml", GOOD_MANIFEST.replace('usesCleartextTraffic="false"', 'usesCleartextTraffic="true"'))
+check("android: cleartext in the debug manifest is allowed", run("check_android.py", t).returncode == 0)
+t = good_tree(); write(t, "app/src/main/AndroidManifest.xml", GOOD_MANIFEST.replace(' android:dataExtractionRules="@xml/d"', ''))
+r = run("check_android.py", t); check("android: missing data-extraction rules are refused", r.returncode == 1)
+t = good_tree(); write(t, "w/T.java", "class T { void checkServerTrusted(X509Certificate[] c, String a) {\n }\n }\n")
+r = run("check_android.py", t); check("android: a trust-all TrustManager is refused", r.returncode == 1 and "every server certificate" in r.stdout)
+t = good_tree(); write(t, "w/H.java", "class H { Object v = b.hostnameVerifier((s, ss) -> true); }\n")
+r = run("check_android.py", t); check("android: a trust-all HostnameVerifier is refused", r.returncode == 1 and "every host" in r.stdout)
+t = good_tree(); write(t, "w/V.java", "class V { void onReceivedSslError(WebView w, SslErrorHandler h, SslError e) { h.proceed(); } }\n")
+r = run("check_android.py", t); check("android: a WebView that proceeds past TLS errors is refused", r.returncode == 1 and "TLS" in r.stdout)
+t = good_tree(); write(t, "w/V.java", "class V { void onReceivedSslError(WebView w, SslErrorHandler h, SslError e) { h.cancel(); } }\n")
+check("android: a WebView that cancels on TLS errors passes", run("check_android.py", t).returncode == 0)
+
 # audit_gradle coordinate parsing (no network)
 import audit_gradle
 tree = """\
