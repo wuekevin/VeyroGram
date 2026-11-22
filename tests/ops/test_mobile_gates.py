@@ -111,6 +111,20 @@ def ios_tree():
     return t
 
 
+t = ios_tree(); write(t, "App/Info.plist", "<dict><key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key>\n<true/></dict></dict>")
+r = run("check_ios.py", t); check("ios: disabled App Transport Security is refused", r.returncode == 1 and "App Transport Security" in r.stdout)
+t = ios_tree(); write(t, "App/Info.plist", "<dict><key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key>\n<false/><key>NSAllowsLocalNetworking</key><true/></dict></dict>")
+check("ios: ATS on with local networking allowed passes", run("check_ios.py", t).returncode == 0)
+t = ios_tree(); write(t, "App/V.m", "p.allowInvalidCertificates = YES;\n")
+r = run("check_ios.py", t); check("ios: allowInvalidCertificates is refused", r.returncode == 1 and "TLS validation" in r.stdout)
+t = ios_tree(); write(t, "App/V.m", "p.validatesDomainName = NO;\n")
+r = run("check_ios.py", t); check("ios: validatesDomainName=NO is refused", r.returncode == 1)
+t = ios_tree(); write(t, "App/V.m", "NSURLCredential *c = [NSURLCredential credentialForTrust:t];\n")
+r = run("check_ios.py", t); check("ios: blind credentialForTrust is refused", r.returncode == 1 and "server trust" in r.stdout)
+t = ios_tree(); write(t, "Modules/WuKongBase/Classes/Services/Base/WKLoginInfo.m", "[d setObject:[NSKeyedArchiver archivedDataWithRootObject:self] forKey:k];\n")
+r = run("check_ios.py", t); check("ios: tokens in user defaults are refused", r.returncode == 1 and "Keychain" in r.stdout)
+t = ios_tree(); write(t, "App/I.m", "[v sd_setImageWithURL:u options:SDWebImageAllowInvalidSSLCertificates];\n")
+r = run("check_ios.py", t); check("ios: image loads that allow invalid certificates are refused", r.returncode == 1 and "AllowInvalidSSLCertificates" in r.stdout)
 t = ios_tree(); check("ios: a clean tree passes", run("check_ios.py", t).returncode == 0)
 t = ios_tree(); write(t, "TangSengDaoDao/AppDelegate.m", '#define SERVER_IP @"api.botgate.cn"\n')
 r = run("check_ios.py", t); check("ios: the vendor API host is refused", r.returncode == 1 and "vendor API host" in r.stdout)

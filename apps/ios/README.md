@@ -17,3 +17,5 @@
 - Pods 里三个来自 `github.com/tangtaoit/*` 的个人 fork（YBImageBrowser、YYImage、AsyncDisplayKit、librlottie）来源未审计。
 - 没有单元测试目标（工程只有 App 与两个通知扩展），所以“iOS 单元测试”未做。
 - 产物可复现性见故事记录。
+
+**传输与存储加固（补丁 0002）：** 上游把 ATS 整个关掉（`NSAllowsArbitraryLoads=true`）；API 客户端、图片下载（SDWebImage 的 allow-invalid 选项被几十处调用传入）、视频播放都信任任意证书且不校验主机名；登录令牌和 IM 令牌以明文存在 `NSUserDefaults`（会进 iTunes/iCloud 备份）。0002：ATS 开启并只放行本地网络（开发用 `http://127.0.0.1`），API/图片/视频恢复系统证书与主机名校验，会话改存钥匙串（`AfterFirstUnlockThisDeviceOnly`，不进备份、不迁移设备；旧版 UserDefaults 里的会话启动时迁入并删除；全新安装时清掉可能残留的钥匙串旧令牌）。`check_ios.py` 拦这些回退。

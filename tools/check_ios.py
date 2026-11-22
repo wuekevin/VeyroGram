@@ -21,6 +21,21 @@ def main() -> int:
             for k, why in BAD.items():
                 if k in t and not (k == "com.xinbida" and "Copyright" in t.split(k)[0][-40:]):
                     bad.append(f"{rel}: {why} ({k})")
+        if p.suffix == ".plist" and not rel.startswith("Pods/") and "NSAllowsArbitraryLoads" in p.read_text(errors="replace"):
+            import re
+            if re.search(r"<key>NSAllowsArbitraryLoads\w*</key>\s*<true/>", p.read_text(errors="replace")):
+                bad.append(f"{rel}: App Transport Security is disabled (NSAllowsArbitraryLoads)")
+        if p.suffix in (".m", ".mm", ".swift") and not rel.startswith("Pods/"):
+            import re
+            t = p.read_text(errors="replace")
+            if re.search(r"allowInvalidCertificates\s*=\s*(YES|true)|validatesDomainName\s*=\s*(NO|false)", t):
+                bad.append(f"{rel}: TLS validation is disabled (allowInvalidCertificates / validatesDomainName)")
+            if "AllowInvalidSSLCertificates" in t and not rel.endswith("WKSDWebImageDownloaderOperation.m"):
+                bad.append(f"{rel}: image loads opt in to invalid TLS certificates (AllowInvalidSSLCertificates)")
+            if re.search(r"credentialForTrust:", t):
+                bad.append(f"{rel}: accepts a server trust without evaluating it")
+            if rel.endswith("WKLoginInfo.m") and re.search(r"setObject:[^;]*archivedDataWithRootObject", t):
+                bad.append(f"{rel}: session tokens written to user defaults (use the Keychain)")
         if rel.startswith("Pods/AFNetworking/") and p.suffix == ".m" and "netinet6/in6.h" in p.read_text(errors="replace"):
             bad.append(f"{rel}: private header netinet6/in6.h (fails under Xcode 26)")
     for d in ("Pods/YYImage/Vendor/WebP.framework",):

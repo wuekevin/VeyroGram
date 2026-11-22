@@ -1,0 +1,252 @@
+diff --git a/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/Component/WKDefaultWebImageMediator.m b/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/Component/WKDefaultWebImageMediator.m
+index adfb6a9..35c046a 100644
+--- a/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/Component/WKDefaultWebImageMediator.m
++++ b/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/Component/WKDefaultWebImageMediator.m
+@@ -26,7 +26,7 @@ - (id)yb_downloadImageWithURL:(NSURL *)URL requestModifier:(nullable YBIBWebImag
+         context = @{SDWebImageContextDownloadRequestModifier:modifier};
+     }
+     
+-    SDWebImageDownloaderOptions options = SDWebImageDownloaderLowPriority | SDWebImageDownloaderAvoidDecodeImage | SDWebImageAllowInvalidSSLCertificates;
++    SDWebImageDownloaderOptions options = SDWebImageDownloaderLowPriority | SDWebImageDownloaderAvoidDecodeImage;
+     
+     SDWebImageDownloadToken *token = [[SDWebImageDownloader sharedDownloader] downloadImageWithURL:URL options:options context:context progress:^(NSInteger receivedSize, NSInteger expectedSize, NSURL * _Nullable targetURL) {
+         if (progress) progress(receivedSize, expectedSize);
+@@ -64,7 +64,7 @@ - (void)yb_queryCacheOperationForKey:(NSURL *)key completed:(YBIBWebImageCacheQu
+ #undef QUERY_CACHE_FAILED
+         
+         // 'NSData' of image must be read to ensure decoding correctly.
+-        SDImageCacheOptions options = SDImageCacheQueryMemoryData | SDImageCacheAvoidDecodeImage | SDWebImageAllowInvalidSSLCertificates;
++        SDImageCacheOptions options = SDImageCacheQueryMemoryData | SDImageCacheAvoidDecodeImage;
+     [[SDImageCache sharedImageCache] queryCacheOperationForKey:cacheKey options:options done:^(UIImage * _Nullable image, NSData * _Nullable data, SDImageCacheType cacheType) {
+         if (completed) completed(image, data);
+     }];
+diff --git a/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/Video/WKVideoItemView.m b/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/Video/WKVideoItemView.m
+index 5a55cad..b2d80b5 100644
+--- a/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/Video/WKVideoItemView.m
++++ b/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/Video/WKVideoItemView.m
+@@ -371,32 +371,7 @@ - (void)resourceLoader:(AVAssetResourceLoader *)resourceLoader didCancelAuthenti
+     
+ }
+ 
+-- (BOOL)resourceLoader:(AVAssetResourceLoader *)resourceLoader shouldWaitForResponseToAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge
+-{
+-    SecTrustRef serverTrust = [[challenge protectionSpace] serverTrust];
+-    [[self customSecurityPolicy] evaluateServerTrust:serverTrust forDomain:nil];
+-    NSURLCredential *credential = [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust];
+-
+-    
+-     [[challenge sender] useCredential: credential
+-            
+-                  forAuthenticationChallenge: challenge];
+-    
+-    return YES;
+-}
+-
+-- (AFSecurityPolicy *)customSecurityPolicy {
+-
+-    AFSecurityPolicy *securityPolicy = [AFSecurityPolicy policyWithPinningMode:AFSSLPinningModeNone];
+-  
+-    securityPolicy.allowInvalidCertificates = YES;
+-  
+-    securityPolicy.validatesDomainName = NO;
+-
+-    
+-    return securityPolicy;
+-    
+-}
++// Server trust is evaluated by the system. The upstream delegate here accepted every certificate and host name.
+ 
+ - (WKVideoTopBar *)topBar {
+     if (!_topBar) {
+diff --git a/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/WKSDWebImageDownloaderOperation.m b/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/WKSDWebImageDownloaderOperation.m
+index a1b08bf..eac108b 100644
+--- a/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/WKSDWebImageDownloaderOperation.m
++++ b/Modules/WuKongBase/WuKongBase/Classes/Sections/Common/WKSDWebImageDownloaderOperation.m
+@@ -14,12 +14,8 @@ - (void)URLSession:(NSURLSession *)session didReceiveChallenge:(NSURLAuthenticat
+     __block NSURLCredential *credential = nil;
+     
+     if ([challenge.protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust]) {
+-        if (!(self.options & SDWebImageDownloaderAllowInvalidSSLCertificates)) {
+-            disposition = NSURLSessionAuthChallengePerformDefaultHandling;
+-        } else {
+-            credential = [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust];
+-            disposition = NSURLSessionAuthChallengeUseCredential;
+-        }
++        // Always the system default evaluation: the upstream code could accept any certificate when a caller passed the allow-invalid option.
++        disposition = NSURLSessionAuthChallengePerformDefaultHandling;
+     } else {
+         if (challenge.previousFailureCount == 0) {
+             if (self.credential) {
+diff --git a/Modules/WuKongBase/WuKongBase/Classes/Services/Base/WKAPIClient.m b/Modules/WuKongBase/WuKongBase/Classes/Services/Base/WKAPIClient.m
+index d12be1b..7c3c4ef 100644
+--- a/Modules/WuKongBase/WuKongBase/Classes/Services/Base/WKAPIClient.m
++++ b/Modules/WuKongBase/WuKongBase/Classes/Services/Base/WKAPIClient.m
+@@ -40,12 +40,7 @@ + (instancetype)sharedClient {
+ -(void) setConfig:(WKAPIClientConfig*)config{
+     _config = config;
+     _sessionManager = [[AFHTTPSessionManager alloc] initWithBaseURL:[NSURL URLWithString:config.baseUrl]];
+-    if([config.baseUrl hasPrefix:@"https"]) {
+-        AFSecurityPolicy *securityPolicy = [AFSecurityPolicy policyWithPinningMode:AFSSLPinningModeNone];
+-        securityPolicy.allowInvalidCertificates = YES;
+-        securityPolicy.validatesDomainName = NO;
+-        _sessionManager.securityPolicy = securityPolicy;
+-    }
++    // Default AFSecurityPolicy: the system validates the certificate chain and the host name. (Upstream disabled both.)
+ //     if (config.httpsOn) {
+ //
+ //     }
+diff --git a/Modules/WuKongBase/WuKongBase/Classes/Services/Base/WKLoginInfo.m b/Modules/WuKongBase/WuKongBase/Classes/Services/Base/WKLoginInfo.m
+index 2403a67..c82f236 100644
+--- a/Modules/WuKongBase/WuKongBase/Classes/Services/Base/WKLoginInfo.m
++++ b/Modules/WuKongBase/WuKongBase/Classes/Services/Base/WKLoginInfo.m
+@@ -6,6 +6,7 @@
+ //
+ 
+ #import "WKLoginInfo.h"
++#import <Security/Security.h>
+ #define uidKey @"uid"
+ #define tokenKey @"token"
+ #define imTokenKey @"imtoken"
+@@ -20,6 +21,38 @@ @interface WKLoginInfo ()
+ 
+ @end
+ 
++
++// Session tokens live in the Keychain, readable only after first unlock and never migrated to another device or into a backup.
++static NSString *const VGKeychainService = @"com.veyrogram.logininfo";
++static NSString *const VGInstallMarkerKey = @"vg.installMarker";
++
++static NSMutableDictionary *VGKeychainQuery(void) {
++    return [@{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
++              (__bridge id)kSecAttrService: VGKeychainService,
++              (__bridge id)kSecAttrAccount: @"loginInfo"} mutableCopy];
++}
++
++static NSData *VGKeychainRead(void) {
++    NSMutableDictionary *q = VGKeychainQuery();
++    q[(__bridge id)kSecReturnData] = @YES;
++    q[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
++    CFTypeRef out = NULL;
++    if (SecItemCopyMatching((__bridge CFDictionaryRef)q, &out) != errSecSuccess || !out) return nil;
++    return (__bridge_transfer NSData *)out;
++}
++
++static void VGKeychainDelete(void) {
++    SecItemDelete((__bridge CFDictionaryRef)VGKeychainQuery());
++}
++
++static BOOL VGKeychainWrite(NSData *data) {
++    VGKeychainDelete();
++    NSMutableDictionary *q = VGKeychainQuery();
++    q[(__bridge id)kSecValueData] = data;
++    q[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
++    return SecItemAdd((__bridge CFDictionaryRef)q, NULL) == errSecSuccess;
++}
++
+ @implementation WKLoginInfo
+ 
+ 
+@@ -121,7 +154,22 @@ - (NSString *)deviceUUID {
+ }
+ 
+ -(void) load{
+-    _instance =  [NSKeyedUnarchiver unarchiveObjectWithData:[[NSUserDefaults standardUserDefaults] objectForKey:LoginInfoKey]];
++    NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
++    // The Keychain outlives an uninstall; user defaults do not. No marker means a fresh install: drop any stale token.
++    if (![userDefaults boolForKey:VGInstallMarkerKey]) {
++        VGKeychainDelete();
++        [userDefaults setBool:YES forKey:VGInstallMarkerKey];
++    }
++    NSData *data = VGKeychainRead();
++    if (!data) {
++        // Migrate a session saved by an older build out of the (backed-up) user defaults.
++        NSData *legacy = [userDefaults objectForKey:LoginInfoKey];
++        if (legacy && VGKeychainWrite(legacy)) {
++            data = legacy;
++        }
++    }
++    [userDefaults removeObjectForKey:LoginInfoKey];
++    _instance = data ? [NSKeyedUnarchiver unarchiveObjectWithData:data] : nil;
+     if(!_instance) {
+         _instance = [[WKLoginInfo alloc]init];
+     }
+@@ -129,9 +177,10 @@ -(void) load{
+ 
+ 
+ -(void) save{
+-    NSUserDefaults  *userDefaults =[NSUserDefaults standardUserDefaults];
+-    [userDefaults setObject:[NSKeyedArchiver archivedDataWithRootObject:self] forKey:LoginInfoKey];
+-    [userDefaults synchronize];
++    if (!VGKeychainWrite([NSKeyedArchiver archivedDataWithRootObject:self])) {
++        NSLog(@"WKLoginInfo: could not save the session to the Keychain");
++    }
++    [[NSUserDefaults standardUserDefaults] removeObjectForKey:LoginInfoKey];
+ }
+ 
+ -(void) clear{
+@@ -139,6 +188,7 @@ -(void) clear{
+     self.uid = @"";
+     self.imToken = @"";
+     self.extra = [[NSMutableDictionary alloc] init];
++    VGKeychainDelete();
+     NSUserDefaults  *userDefaults =[NSUserDefaults standardUserDefaults];
+     [userDefaults removeObjectForKey:LoginInfoKey];
+     [userDefaults synchronize];
+diff --git a/Modules/WuKongBase/WuKongBase/Classes/Services/Category/UIImageView+WK.m b/Modules/WuKongBase/WuKongBase/Classes/Services/Category/UIImageView+WK.m
+index f698ba3..5a4f5e0 100644
+--- a/Modules/WuKongBase/WuKongBase/Classes/Services/Category/UIImageView+WK.m
++++ b/Modules/WuKongBase/WuKongBase/Classes/Services/Category/UIImageView+WK.m
+@@ -11,33 +11,33 @@
+ @implementation UIImageView (WK)
+ 
+ - (void)lim_setImageWithURL:(NSURL *)url {
+-    [self sd_setImageWithURL:url placeholderImage:nil options:SDWebImageAllowInvalidSSLCertificates progress:nil completed:nil];
++    [self sd_setImageWithURL:url placeholderImage:nil options:0 progress:nil completed:nil];
+ }
+ 
+ - (void)lim_setImageWithURL:(NSURL *)url completed:(SDExternalCompletionBlock)completed{
+-    [self sd_setImageWithURL:url placeholderImage:nil options:SDWebImageAllowInvalidSSLCertificates progress:nil completed:completed];
++    [self sd_setImageWithURL:url placeholderImage:nil options:0 progress:nil completed:completed];
+ }
+ 
+ - (void)lim_setImageWithURL:(NSURL *)url context:(SDWebImageContext*)context completed:(SDExternalCompletionBlock)completed{
+-    [self sd_setImageWithURL:url placeholderImage:nil options:SDWebImageAllowInvalidSSLCertificates context:context progress:nil completed:completed];
++    [self sd_setImageWithURL:url placeholderImage:nil options:0 context:context progress:nil completed:completed];
+ }
+ 
+ - (void)lim_setImageWithURL:(NSURL *)url context:(SDWebImageContext*)context {
+-    [self sd_setImageWithURL:url placeholderImage:nil options:SDWebImageAllowInvalidSSLCertificates context:context];
++    [self sd_setImageWithURL:url placeholderImage:nil options:0 context:context];
+ }
+ 
+ - (void)lim_setImageWithURL:(NSURL *)url options:( SDWebImageOptions)options context:(SDWebImageContext*)context completed:(SDExternalCompletionBlock)completed {
+-    [self sd_setImageWithURL:url placeholderImage:nil options:SDWebImageAllowInvalidSSLCertificates | options context:context progress:nil completed:completed];
++    [self sd_setImageWithURL:url placeholderImage:nil options:options context:context progress:nil completed:completed];
+ }
+ 
+ 
+ - (void)lim_setImageWithURL:(NSURL *)url placeholderImage:(UIImage*)placeholderImage {
+     
+-    [self sd_setImageWithURL:url placeholderImage:placeholderImage options:SDWebImageAllowInvalidSSLCertificates];
++    [self sd_setImageWithURL:url placeholderImage:placeholderImage options:0];
+ }
+ 
+ - (void)lim_setImageWithURL:(NSURL *)url placeholderImage:(UIImage*)placeholderImage options:(SDWebImageOptions)options context:(SDWebImageContext*)context{
+-    [self sd_setImageWithURL:url placeholderImage:placeholderImage options:options | SDWebImageAllowInvalidSSLCertificates context:context];
++    [self sd_setImageWithURL:url placeholderImage:placeholderImage options:options context:context];
+ }
+ 
+ 
+diff --git a/TangSengDaoDao/Info.plist b/TangSengDaoDao/Info.plist
+index 7ea86dc..05fab14 100644
+--- a/TangSengDaoDao/Info.plist
++++ b/TangSengDaoDao/Info.plist
+@@ -56,6 +56,8 @@
+ 	<key>NSAppTransportSecurity</key>
+ 	<dict>
+ 		<key>NSAllowsArbitraryLoads</key>
++		<false/>
++		<key>NSAllowsLocalNetworking</key>
+ 		<true/>
+ 	</dict>
+ 	<key>NSCameraUsageDescription</key>
