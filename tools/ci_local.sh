@@ -24,6 +24,14 @@ fi
 step "API clients are generated from the current contract" python3 -I tools/gen_clients.py --check
 step "API client generator (tests)"     python3 -I tests/ops/test_gen_clients.py
 step "API clients compile (go, typescript, swift)" bash tools/check_clients.sh
+step "client build gates (tests: lockfile mirrors, Electron config)" python3 -I tests/ops/test_clients.py
+if [ -d upstream/TangSengDaoDaoWeb ] && [ -d upstream/TangSengDaoDaoManager ] && [ "${VG_SKIP_CLIENT_BUILD:-0}" != 1 ]; then
+  cw=$(mktemp -d); trap 'for d in web manager; do git -C "upstream/$([ $d = web ] && echo TangSengDaoDaoWeb || echo TangSengDaoDaoManager)" worktree prune; done; rm -rf "$cw"' EXIT
+  step "Web + desktop: pinned build, frozen install, audit, Electron config + runtime smoke" env VG_ELECTRON_SMOKE=1 bash tools/build_clients.sh web "$cw/web"
+  step "Manager: pinned build, frozen install, audit" bash tools/build_clients.sh manager "$cw/manager"
+else
+  echo "NOTE: upstream/TangSengDaoDao{Web,Manager} missing or VG_SKIP_CLIENT_BUILD=1 - client builds SKIPPED"
+fi
 step "OpenAPI diff gate (tests)"        python3 -I tests/ops/test_openapi_diff.py
 step "upstream compat guard"             python3 -I tools/check_upstream_compat.py
 step "upstream compat guard (tests)"     python3 -I tests/ops/test_upstream_compat.py

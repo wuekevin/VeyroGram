@@ -1,0 +1,150 @@
+diff --git a/apps/web/electron-builder.js b/apps/web/electron-builder.js
+index b4f8c92..1bdf911 100644
+--- a/apps/web/electron-builder.js
++++ b/apps/web/electron-builder.js
+@@ -1,6 +1,6 @@
+ module.exports = {
+   productName: "TangSengDaoDao", //项目名
+-  appId: "com.xinbida.macapp",
++  appId: "app.veyrogram.desktop",
+   copyright: "Copyright © ShangHaiXinBiDa", //版权
+   directories: {
+     output: "dist-ele", // 输出文件夹
+@@ -14,16 +14,13 @@ module.exports = {
+     "**/*.node"
+   ],
+   buildDependenciesFromSource: true,
+-  electronDownload: {
+-    mirror: "https://registry.npmmirror.com/-/binary/electron/",
+-  },
+   files: ["resources/**/*","out-election/**/*", "build/**/*"], // 需要打包的文件
+   extraMetadata: {
+     main: "out-election/main/index.js",
+   },
+   publish: [{
+     provider: "generic",
+-    url: "https://api.botgate.cn/v1/common/pcupdater/"
++    url: process.env.VEYROGRAM_UPDATE_URL || "https://updates.invalid/"
+   }],
+   mac: {
+     extendInfo: {
+diff --git a/apps/web/resources/app-update.yml b/apps/web/resources/app-update.yml
+index 0f10da2..6202c39 100644
+--- a/apps/web/resources/app-update.yml
++++ b/apps/web/resources/app-update.yml
+@@ -1,3 +1,3 @@
+ provider: generic
+-url: https://api.botgate.cn/
++url: https://updates.invalid/
+ updaterCacheDirName: '@tsdaodaoweb-updater'
+diff --git a/apps/web/src-election/main/confing.ts b/apps/web/src-election/main/confing.ts
+index 0022b7b..a1e7c9d 100644
+--- a/apps/web/src-election/main/confing.ts
++++ b/apps/web/src-election/main/confing.ts
+@@ -1,7 +1,8 @@
+ const TSDD_FONFIG = {
+   appId: "com.tsdaodao.im",
+   name: "唐僧叨叨",
+-  updataUrl: 'https://api.botgate.cn/'
++  // Update server base URL, injected at build time. Empty = auto-update disabled (no vendor default; Story 1.10).
++  updataUrl: process.env.VEYROGRAM_UPDATE_URL || ""
+ };
+ 
+ export default TSDD_FONFIG;
+diff --git a/apps/web/src-tauri/tauri.conf.json b/apps/web/src-tauri/tauri.conf.json
+index b360721..a3651e9 100644
+--- a/apps/web/src-tauri/tauri.conf.json
++++ b/apps/web/src-tauri/tauri.conf.json
+@@ -65,7 +65,7 @@
+     "updater": {
+       "active": true,
+       "endpoints": [
+-          "https://api.botgate.cn/v1/common/updater/{{target}}/{{current_version}}"
++          "https://updates.invalid/{{target}}/{{current_version}}"
+       ],
+       "dialog": false,
+       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQyOTBCMTNGNDczQTEzREIKUldUYkV6cEhQN0dRMGd2MWkzdUNMTmlhRXVWbXluamlDSUlVajFWK0p5YXAwanJDREhyajJNclIK"
+diff --git a/apps/web/src/index.tsx b/apps/web/src/index.tsx
+index c565efc..2c996ea 100644
+--- a/apps/web/src/index.tsx
++++ b/apps/web/src/index.tsx
+@@ -1,5 +1,5 @@
+ import React from 'react';
+-import ReactDOM from 'react-dom';
++import { createRoot } from 'react-dom/client';
+ import './index.css';
+ import App from './App';
+ import reportWebVitals from './reportWebVitals';
+@@ -8,7 +8,8 @@ import  { LoginModule } from '@tsdaodao/login';
+ import  { DataSourceModule } from '@tsdaodao/datasource';
+ import {ContactsModule} from '@tsdaodao/contacts';
+ 
+-const apiURL = "https://api.botgate.cn/v1/"
++// API base for Electron/Tauri/dev builds, injected at build time (REACT_APP_API_URL). No vendor default (Story 1.10).
++const apiURL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8080/v1/"
+ 
+ if((window as any).__TAURI_IPC__) { // tauri环境
+   console.log("tauri环境")
+@@ -42,11 +43,10 @@ WKApp.shared.startup() // app启动
+ // Initialize Electron notification bridge if running in Electron
+ 
+ 
+-ReactDOM.render(
++createRoot(document.getElementById('root') as HTMLElement).render(
+   <React.StrictMode>
+     <App />
+-  </React.StrictMode>,
+-  document.getElementById('root')
++  </React.StrictMode>
+ );
+ reportWebVitals();
+ 
+diff --git a/packages/tsdaodaocontacts/src/module.tsx b/packages/tsdaodaocontacts/src/module.tsx
+index ce227f2..b48b557 100644
+--- a/packages/tsdaodaocontacts/src/module.tsx
++++ b/packages/tsdaodaocontacts/src/module.tsx
+@@ -9,7 +9,8 @@ import {
+   ChannelTypePerson,
+ } from "wukongimjssdk";
+ import React from "react";
+-import ReactDOM from "react-dom";
++import { flushSync } from "react-dom";
++import { createRoot } from "react-dom/client";
+ import Blacklist from "./Blacklist";
+ import { FriendAdd } from "./FriendAdd";
+ import GroupSave from "./GroupSave";
+@@ -131,21 +132,24 @@ export default class ContactsModule implements IModule {
+         const ref: any = React.createRef();
+         document.body.appendChild(div);
+ 
++        const root = createRoot(div);
+         const remove = () => {
+           if (!ref.current) return;
+-          ReactDOM.unmountComponentAtNode(div);
++          root.unmount();
+           document.body.removeChild(div);
+         };
+ 
+-        ReactDOM.render(
+-          <OrganizationalGroupNew
+-            ref={ref}
+-            channel={channel}
+-            remove={remove}
+-            action={OrganizationalGroupNewAction.createGroup}
+-          />,
+-          div
+-        );
++        // React 18 renders asynchronously; flush so ref.current is set before use.
++        flushSync(() => {
++          root.render(
++            <OrganizationalGroupNew
++              ref={ref}
++              channel={channel}
++              remove={remove}
++              action={OrganizationalGroupNewAction.createGroup}
++            />
++          );
++        });
+ 
+         ref.current.onShowModal();
+       }

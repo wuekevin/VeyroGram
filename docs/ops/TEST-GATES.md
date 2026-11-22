@@ -17,13 +17,14 @@
 ## 门禁的门禁（防止它们悄悄失效）
 - `tests/ops/test_supplychain.py`：许可证分类（GPL、无许可证、商业条款必须被挡，MPL 里提到 GPL 的措辞不能误杀）、豁免过期与缺批准人、各类密钥必须被抓、允许清单只放行一个值。
 - `tests/ops/test_upstream_compat.py`：旧路径混入、未处置的表、删除空清单声明，都必须失败。
+- `tests/ops/test_clients.py`：锁文件里的镜像/任意主机/缺 integrity、`.yarnrc` 镜像、无锁文件，以及 Electron 的 nodeIntegration/contextIsolation/sandbox/webSecurity、字面 webPreferences、裸 IPC、白名单漂移、Electron 过旧、下载镜像、禁用 asar，都必须失败。
 - 路由门禁的变异测试（手工做过）：删掉某路由的 `Auth` 包装、新增未入契约的路由，都会失败。
 
 ## 核心 E2E 套件（自建，不以上游测试为基线）
 上游测试不是基线（R-16）。核心套件就是 `services/api/cmd/api` 下用**真实 MySQL + Redis + 打补丁的 WuKongIM + API + worker 进程**跑的端到端测试：注册/登录/刷新（`TestAuthRegisterLoginRefreshOverRealHTTP`）、设备撤销与踢线（`TestRevocationKickReconnectAndNoticeOverRealWebSocket`）、单聊与发送门（`TestSingleChatOverRealIMWithBeforeSendGate`）、拉黑（`TestBlockListThroughRealIMAndAPI`）、离线同步（`TestSyncCatchUpUnreadDraftsAndIsolationOverRealIM`）、生成式越权（上表）、备份恢复与 IM 快照恢复、安装向导、管理员平面。`bash tools/ci_local.sh` 在设置了 `VG_TEST_*` 环境变量时全部运行；没设时这些测试**跳过并在输出里打 NOTE**，所以“本地绿”不等于“跑过了集成测试”。
 
 ## 仍然没做（诚实说明）
-- **只有 Go 依赖被扫描。** 仓库里还没有 npm/Gradle/Pods 清单；这些端开工时必须把对应的 SBOM/许可证/镜像检查接进来（镜像检查已按文件名覆盖了 package.json、lockfile、Gradle、Podfile）。
+- **SBOM/许可证只覆盖 Go 依赖。** Web/Manager 的 npm 依赖有锁文件官方源检查、`audit` 高危为零门禁和可复现构建（Story 1.10，`tools/build_clients.sh`），但没有 SBOM 与许可证扫描；Android（Gradle）、iOS（Pods/SPM）开工时再接。
 - 许可证识别是对许可证**文本**的特征匹配，不是 SPDX 权威数据库；遇到双许可证、非常规措辞会判“无法识别”而阻断，需要人工看一眼并按豁免流程处理。
 - 密钥扫描是正则 + 熵，不是 gitleaks 那样的完整规则库，也**不扫 git 历史**（只扫当前文件）。若曾经提交过密钥，要单独处理并轮换。
 - “已移除成员”的负面测试**现在没有可测对象**（还没有群路由）；路由门禁会在出现群/频道路由时失败，逼着补上这个测试，而不是默默漏掉。

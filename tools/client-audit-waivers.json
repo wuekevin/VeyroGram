@@ -1,0 +1,4 @@
+{
+  "_comment": "Waivers for high/critical client dependency advisories (Story 1.10). Each entry: id (advisory id), reason, approver, expires (YYYY-MM-DD). Approvals are the owner's; the agent never adds entries.",
+  "waivers": []
+}

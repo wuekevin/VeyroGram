@@ -119,6 +119,32 @@ jobs:
           git -C upstream/WuKongIM checkout --quiet "$pin"
           bash tools/build_wukongim.sh "$RUNNER_TEMP/wukongim"
           VG_TEST_WUKONGIM_BIN="$RUNNER_TEMP/wukongim" python3 -I tests/ops/test_exposure.py
+  clients:
+    # Story 1.10: Web/desktop and Manager build from a pinned upstream SHA + patch queue (apps/*/patches), frozen install from the official registries.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - run: npm install -g pnpm@12
+      - run: python3 -I tests/ops/test_clients.py
+      - name: fetch pinned upstream clients
+        run: |
+          mkdir -p upstream
+          git clone --quiet https://github.com/TangSengDaoDao/TangSengDaoDaoWeb.git upstream/TangSengDaoDaoWeb
+          git clone --quiet https://github.com/TangSengDaoDao/TangSengDaoDaoManager.git upstream/TangSengDaoDaoManager
+      - name: Web + desktop (frozen install, audit gate, build, Electron config check, runtime smoke under xvfb)
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb libgbm1 libasound2t64 libgtk-3-0 libnss3
+          VG_ELECTRON_SMOKE=1 VG_ELECTRON_FLAGS="--no-sandbox" xvfb-run -a bash tools/build_clients.sh web "$RUNNER_TEMP/web"
+      - name: Manager (frozen install, audit gate, build)
+        run: bash tools/build_clients.sh manager "$RUNNER_TEMP/manager"
+      - name: Reproducibility - a second clean build gives the same output hash
+        run: |
+          a=$(VG_SKIP_AUDIT=1 bash tools/build_clients.sh manager "$RUNNER_TEMP/manager2" | sed -n 's/.*sha256 //p')
+          b=$(bash tools/build_clients.sh manager "$RUNNER_TEMP/manager3" | sed -n 's/.*sha256 //p')
+          echo "$a $b"; test -n "$a" && test "$a" = "$b"
+
   design:
     runs-on: ubuntu-latest
     steps:

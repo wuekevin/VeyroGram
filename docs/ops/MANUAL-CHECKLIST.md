@@ -250,6 +250,12 @@ Mac 上已用真实 MySQL 8.0（含 binlog）、第二个真实 mysqld、真实 
 - **Kotlin**：Maven（私有仓库或 GitHub Packages）；Kotlin 客户端到 Story 1.9 的 Android 工程里才第一次被编译，发布前先过那一步。
 - **Swift**：SwiftPM 直接引用 Git 标签即可，不需要中央注册表。
 - 在你决定之前，各端工程可以直接用相对路径引用仓库里的 `packages/clients/*`。
+### C13. 桌面端打包、签名与更新服务器（Story 1.10，需要你的证书与服务器）
+`tools/build_clients.sh web` 只产出 Web 构建和 Electron 的编译产物，不打安装包。要发布桌面端，需要：
+- **应用 ID/名称**：`app.veyrogram.desktop` 是临时值，待 OQ-1（品牌核验）定稿后改 `apps/web/patches/0002` 里的 `electron-builder*.js`。
+- **代码签名**：macOS 需要 Apple Developer ID 证书 + 公证（`notarytool`）；Windows 需要代码签名证书（OV/EV）。证书和密码放在你的构建机上，不要发给我也不要提交仓库。
+- **更新服务器**：自动更新现在是**关闭**的（没有厂商默认值）。要开启：准备一个 HTTPS 静态站点放 `electron-builder` 产出的 `latest*.yml` 与安装包，构建时设置环境变量 `VEYROGRAM_UPDATE_URL=https://你的更新域名/`；签名更新要求 Windows 证书发布者名与 `publisherName` 一致。
+- 做完后告诉我更新域名，我再补更新通道的端到端测试。
 ---
 
 ## D. 审计锚点的异地存储（防“控制了数据库的人改历史”）

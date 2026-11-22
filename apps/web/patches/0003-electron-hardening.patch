@@ -1,0 +1,411 @@
+diff --git a/apps/web/src-election/main/index.ts b/apps/web/src-election/main/index.ts
+index 865a7b4..19ec3d7 100644
+--- a/apps/web/src-election/main/index.ts
++++ b/apps/web/src-election/main/index.ts
+@@ -1,3 +1,4 @@
++import { onTrusted, handleTrusted, installSecurityHandlers, secureWebPreferences } from "./security";
+ import {
+   app,
+   BrowserWindow,
+@@ -298,7 +299,8 @@ function regShortcut() {
+ 
+ 
+   // 打开所有窗口控制台
+-  globalShortcut.register("ctrl+shift+i", () => {
++  // DevTools shortcut is development-only (Story 1.10).
++  if (isDevelopment) globalShortcut.register("ctrl+shift+i", () => {
+     let windows = BrowserWindow.getAllWindows();
+     windows.forEach((win: any) => win.openDevTools());
+   });
+@@ -321,8 +323,7 @@ const getWindowConfig = () => {
+     autoHideMenuBar: isWin,
+     webPreferences: {
+       // 加载脚本
+-      preload: join(__dirname, "..", "preload/index"),
+-      nodeIntegration: true,
++      ...secureWebPreferences(join(__dirname, "..", "preload/index")),
+     },
+     // frame: !isWin,
+   };
+@@ -391,13 +392,13 @@ const createMainWindow = async () => {
+     mainWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+   }
+ 
+-  ipcMain.on("screenshots-start", (event, args) => {
++  onTrusted("screenshots-start", (event, args) => {
+     console.log("main voip-message event", args);
+     screenShotWindowId = event.sender.id;
+     screenshots.startCapture();
+   });
+ 
+-  ipcMain.on("get-media-access-status", async (event, mediaType: 'camera' | 'microphone')=>{
++  onTrusted("get-media-access-status", async (event, mediaType: 'camera' | 'microphone')=>{
+     console.log(mediaType)
+     //检测麦克风权限是否开启
+     const getMediaAccessStatus = systemPreferences.getMediaAccessStatus(mediaType);
+@@ -411,17 +412,17 @@ const createMainWindow = async () => {
+     return getMediaAccessStatus;
+   })
+   // 会话未读消息消息数量托盘提醒
+-  ipcMain.on("conversation-anager-unread-count", (event, num) => {
++  onTrusted("conversation-anager-unread-count", (event, num) => {
+     // const isFlag = num > 0 && isWin ? true : false;
+     updateTray(num, false); // 不需要闪烁，闪烁很消耗性能
+   });
+ 
+-  ipcMain.on("restart-app",()=>{
++  onTrusted("restart-app",()=>{
+     restartApp()
+   })
+ 
+   // Test notification handler for debugging
+-  ipcMain.handle("test-notification-icon", () => {
++  handleTrusted("test-notification-icon", () => {
+     console.log("Testing notification icon from renderer process");
+     electronNotificationManager.testIconLoading();
+ 
+@@ -469,6 +470,7 @@ app.on("open-url", (event, url) => {
+ });
+ 
+ // 单例模式启动
++installSecurityHandlers();
+ const gotTheLock = app.requestSingleInstanceLock();
+ if (!gotTheLock) {
+   app.quit();
+diff --git a/apps/web/src-election/main/notification.ts b/apps/web/src-election/main/notification.ts
+index 67a4f1f..19b10e1 100644
+--- a/apps/web/src-election/main/notification.ts
++++ b/apps/web/src-election/main/notification.ts
+@@ -1,3 +1,4 @@
++import { onTrusted, handleTrusted, installSecurityHandlers, secureWebPreferences } from "./security";
+ import { Notification, BrowserWindow, ipcMain, nativeImage } from "electron";
+ import { join } from "path";
+ import { Channel } from "wukongimjssdk";
+@@ -52,17 +53,17 @@ class ElectronNotificationManager {
+ 
+   private setupIpcHandlers(): void {
+     // Handle notification requests from renderer process
+-    ipcMain.handle('show-native-notification', async (_event, options: ElectronNotificationOptions) => {
++    handleTrusted('show-native-notification', async (_event, options: ElectronNotificationOptions) => {
+       return this.showNotification(options);
+     });
+ 
+     // Handle notification close requests
+-    ipcMain.handle('close-native-notification', async (_event, tag: string) => {
++    handleTrusted('close-native-notification', async (_event, tag: string) => {
+       this.closeNotification(tag);
+     });
+ 
+     // Handle close all notifications
+-    ipcMain.handle('close-all-native-notifications', async () => {
++    handleTrusted('close-all-native-notifications', async () => {
+       this.closeAllNotifications();
+     });
+   }
+diff --git a/apps/web/src-election/main/security.ts b/apps/web/src-election/main/security.ts
+new file mode 100644
+index 0000000..6044522
+--- /dev/null
++++ b/apps/web/src-election/main/security.ts
+@@ -0,0 +1,87 @@
++// VeyroGram Electron hardening (Story 1.10). Every BrowserWindow uses secureWebPreferences(); installSecurityHandlers()
++// denies navigation away from the app, denies window.open, and limits permission requests.
++import { app, ipcMain, session, shell } from "electron";
++
++export function secureWebPreferences(preload: string): Electron.WebPreferences {
++  return {
++    preload,
++    contextIsolation: true,
++    nodeIntegration: false,
++    nodeIntegrationInWorker: false,
++    nodeIntegrationInSubFrames: false,
++    sandbox: true,
++    webSecurity: true,
++    allowRunningInsecureContent: false,
++    webviewTag: false,
++  };
++}
++
++const DEV_ORIGIN = "http://localhost:3000";
++
++// The only content a window may show: the packaged build (file:) or, in development only, the dev server.
++export function isAppUrl(url: string, development = process.env.NODE_ENV === "development"): boolean {
++  try {
++    const u = new URL(url);
++    if (u.protocol === "file:") return true;
++    return development && u.origin === DEV_ORIGIN;
++  } catch {
++    return false;
++  }
++}
++
++// External links open in the system browser, https only.
++export function isSafeExternalUrl(url: string): boolean {
++  try {
++    return new URL(url).protocol === "https:";
++  } catch {
++    return false;
++  }
++}
++
++const ALLOWED_PERMISSIONS = new Set(["media", "notifications", "clipboard-sanitized-write", "fullscreen"]);
++
++export function installSecurityHandlers(): void {
++  app.on("web-contents-created", (_event, contents) => {
++    contents.on("will-navigate", (e, url) => {
++      if (!isAppUrl(url)) {
++        e.preventDefault();
++        if (isSafeExternalUrl(url)) void shell.openExternal(url);
++      }
++    });
++    contents.setWindowOpenHandler(({ url }) => {
++      if (isSafeExternalUrl(url)) void shell.openExternal(url);
++      return { action: "deny" };
++    });
++    contents.on("will-attach-webview", (e) => e.preventDefault());
++  });
++
++  const apply = () => {
++    session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => {
++      cb(ALLOWED_PERMISSIONS.has(permission) && isAppUrl(wc.getURL()));
++    });
++    session.defaultSession.setPermissionCheckHandler((wc, permission) =>
++      ALLOWED_PERMISSIONS.has(permission) && (wc ? isAppUrl(wc.getURL()) : false)
++    );
++  };
++  if (app.isReady()) apply();
++  else app.whenReady().then(apply);
++}
++
++// IPC handlers must check the caller: only a frame showing app content may invoke them.
++export function isTrustedSender(event: { senderFrame?: { url: string } | null }): boolean {
++  return !!event.senderFrame && isAppUrl(event.senderFrame.url);
++}
++
++export function onTrusted(channel: string, listener: (event: any, ...args: any[]) => void): void {
++  ipcMain.on(channel, (event, ...args) => {
++    if (!isTrustedSender(event)) return;
++    listener(event, ...args);
++  });
++}
++
++export function handleTrusted(channel: string, fn: (event: any, ...args: any[]) => any): void {
++  ipcMain.handle(channel, (event, ...args) => {
++    if (!isTrustedSender(event)) throw new Error("untrusted IPC sender");
++    return fn(event, ...args);
++  });
++}
+diff --git a/apps/web/src-election/main/update.ts b/apps/web/src-election/main/update.ts
+index e9ec8b9..4a0e6ac 100644
+--- a/apps/web/src-election/main/update.ts
++++ b/apps/web/src-election/main/update.ts
+@@ -1,3 +1,4 @@
++import { onTrusted, handleTrusted, installSecurityHandlers, secureWebPreferences } from "./security";
+ import { app, BrowserWindow, ipcMain } from "electron";
+ import { autoUpdater } from "electron-updater";
+ import logger from "electron-log";
+@@ -12,6 +13,10 @@ const sendUpdateMessage = (opt: { cmd: string; data: any }) => {
+ };
+ 
+ function checkUpdate(win: BrowserWindow) {
++  if (!TSDD_FONFIG.updataUrl) {
++    logger.info("auto-update disabled: VEYROGRAM_UPDATE_URL is not set");
++    return;
++  }
+   autoUpdater.logger = logger;
+   autoUpdater.disableWebInstaller = false;
+   // 用于本地调试
+@@ -79,18 +84,18 @@ function checkUpdate(win: BrowserWindow) {
+   });
+ 
+   // 接收渲染进程消息，开始检查更新
+-  ipcMain.on("check-update", () => {
++  onTrusted("check-update", () => {
+     //执行自动更新检查
+     logger.info("开始检查更新");
+     autoUpdater.checkForUpdates();
+   });
+ 
+   // 触发更新
+-  ipcMain.on("update-app", () => {
++  onTrusted("update-app", () => {
+     autoUpdater.downloadUpdate();
+   });
+   // 退出并安装更新包
+-  ipcMain.on("install-update", () => {
++  onTrusted("install-update", () => {
+     autoUpdater.quitAndInstall();
+   });
+ }
+diff --git a/apps/web/src-election/main/utils/createWindow.ts b/apps/web/src-election/main/utils/createWindow.ts
+index fb36eab..0ad963f 100644
+--- a/apps/web/src-election/main/utils/createWindow.ts
++++ b/apps/web/src-election/main/utils/createWindow.ts
+@@ -1,5 +1,6 @@
+ import { BrowserWindow, screen } from "electron";
+ import { join } from "path";
++import { secureWebPreferences } from "../security";
+ 
+ export function createWindow() {
+   const NODE_ENV = process.env.NODE_ENV;
+@@ -16,8 +17,7 @@ export function createWindow() {
+     resizable: true, // 禁止手动修改窗口尺寸
+     webPreferences: {
+       // 加载脚本
+-      preload: join(__dirname, "../..", "preload/index"),
+-      nodeIntegration: true,
++      ...secureWebPreferences(join(__dirname, "../..", "preload/index")),
+     },
+   });
+ 
+diff --git a/apps/web/src-election/preload/index.ts b/apps/web/src-election/preload/index.ts
+index 57e40cb..9422863 100644
+--- a/apps/web/src-election/preload/index.ts
++++ b/apps/web/src-election/preload/index.ts
+@@ -1,37 +1,70 @@
+ import { contextBridge, ipcRenderer } from "electron";
+ 
++// Channel allowlists (Story 1.10): the renderer can reach only these. Anything else is refused, so a compromised
++// page cannot drive arbitrary main-process handlers. Keep in sync with tools/check_electron_security.py.
++export const SEND_CHANNELS = [
++  "check-update",
++  "update-app",
++  "install-update",
++  "conversation-anager-unread-count",
++  "screenshots-start",
++  "restart-app",
++  "get-media-access-status",
++] as const;
++export const INVOKE_CHANNELS = [
++  "show-native-notification",
++  "close-native-notification",
++  "close-all-native-notifications",
++  "test-notification-icon",
++] as const;
++export const RECEIVE_CHANNELS = [
++  "download-progress",
++  "update-available",
++  "update-downloaded",
++  "update-error",
++  "update-not-available",
++  "screenshots-ok",
++  "deep-link",
++  "show-conversations",
++  "notification-clicked",
++  "notification-action-clicked",
++] as const;
++
++const has = (list: readonly string[], channel: string) => list.includes(channel);
++const refuse = (channel: string) => new Error(`IPC channel not allowed: ${channel}`);
++
+ contextBridge.exposeInMainWorld("__POWERED_ELECTRON__", true);
+ 
+ contextBridge.exposeInMainWorld("ipc", {
+-  send: (channel: string, ...args: any[]) => ipcRenderer.send(channel, ...args),
+-  invoke: (channel: string, ...args: any[]): Promise<any> =>
+-    ipcRenderer.invoke(channel, ...args),
+-  on: (
+-    channel: string,
+-    listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
+-  ) => {
+-    ipcRenderer.on(channel, listener);
++  send: (channel: string, ...args: any[]) => {
++    if (!has(SEND_CHANNELS, channel)) throw refuse(channel);
++    ipcRenderer.send(channel, ...args);
++  },
++  invoke: (channel: string, ...args: any[]): Promise<any> => {
++    if (!has(INVOKE_CHANNELS, channel)) return Promise.reject(refuse(channel));
++    return ipcRenderer.invoke(channel, ...args);
++  },
++  // The IpcRendererEvent is not handed to the page (it carries the sender); listeners get an empty placeholder.
++  on: (channel: string, listener: (event: unknown, ...args: any[]) => void) => {
++    if (!has(RECEIVE_CHANNELS, channel)) throw refuse(channel);
++    ipcRenderer.on(channel, (_e, ...args) => listener({}, ...args));
+   },
+-  once: (
+-    channel: string,
+-    listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
+-  ) => {
+-    ipcRenderer.once(channel, listener);
++  once: (channel: string, listener: (event: unknown, ...args: any[]) => void) => {
++    if (!has(RECEIVE_CHANNELS, channel)) throw refuse(channel);
++    ipcRenderer.once(channel, (_e, ...args) => listener({}, ...args));
+   },
+ });
+ 
+-// Expose native notification API
++// Native notification API
+ contextBridge.exposeInMainWorld("electronNotification", {
+-  show: (options: any) => ipcRenderer.invoke('show-native-notification', options),
+-  close: (tag: string) => ipcRenderer.invoke('close-native-notification', tag),
+-  closeAll: () => ipcRenderer.invoke('close-all-native-notifications'),
++  show: (options: any) => ipcRenderer.invoke("show-native-notification", options),
++  close: (tag: string) => ipcRenderer.invoke("close-native-notification", tag),
++  closeAll: () => ipcRenderer.invoke("close-all-native-notifications"),
+   onClicked: (callback: (data: any) => void) => {
+-    console.log("onClicked");
+-    ipcRenderer.on('notification-clicked', (event, data) => callback(data));
++    ipcRenderer.on("notification-clicked", (_event, data) => callback(data));
+   },
+   onActionClicked: (callback: (data: any) => void) => {
+-    ipcRenderer.on('notification-action-clicked', (event, data) => callback(data));
++    ipcRenderer.on("notification-action-clicked", (_event, data) => callback(data));
+   },
+-  // Test notification icon
+-  testNotificationIcon: () => ipcRenderer.invoke('test-notification-icon'),
++  testNotificationIcon: () => ipcRenderer.invoke("test-notification-icon"),
+ });
+diff --git a/apps/web/src-election/test/smoke.js b/apps/web/src-election/test/smoke.js
+new file mode 100644
+index 0000000..27646a2
+--- /dev/null
++++ b/apps/web/src-election/test/smoke.js
+@@ -0,0 +1,48 @@
++// Runtime security smoke test for the hardened Electron shell (Story 1.10). Run: electron src-election/test/smoke.js
++// (after `yarn compile:electron`). Uses a hidden window with the real preload and secureWebPreferences; exits non-zero on any failure.
++const { app, BrowserWindow } = require("electron");
++const path = require("path");
++const out = path.join(__dirname, "..", "..", "out-election");
++const { secureWebPreferences, isAppUrl, isSafeExternalUrl } = require(path.join(out, "main", "security.js"));
++
++const results = [];
++const check = (name, ok, detail = "") => { results.push({ name, ok }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? " - " + detail : ""}`); };
++
++app.whenReady().then(async () => {
++  const prefs = secureWebPreferences(path.join(out, "preload", "index.js"));
++  check("webPreferences: contextIsolation on", prefs.contextIsolation === true);
++  check("webPreferences: nodeIntegration off", prefs.nodeIntegration === false);
++  check("webPreferences: sandbox on", prefs.sandbox === true);
++  check("webPreferences: webSecurity on", prefs.webSecurity === true);
++  check("isAppUrl: file allowed", isAppUrl("file:///app/build/index.html", false));
++  check("isAppUrl: https site refused", !isAppUrl("https://evil.example/", false));
++  check("isAppUrl: dev server refused outside development", !isAppUrl("http://localhost:3000/", false));
++  check("isSafeExternalUrl: javascript: refused", !isSafeExternalUrl("javascript:alert(1)"));
++  check("isSafeExternalUrl: file: refused", !isSafeExternalUrl("file:///etc/passwd"));
++  check("isSafeExternalUrl: https allowed", isSafeExternalUrl("https://example.com/"));
++
++  const win = new BrowserWindow({ show: false, webPreferences: prefs });
++  await win.loadURL("data:text/html,<html><body>smoke</body></html>");
++  const run = (code) => win.webContents.executeJavaScript(code);
++  check("renderer: require is undefined", (await run("typeof require")) === "undefined");
++  check("renderer: process is undefined", (await run("typeof process")) === "undefined");
++  check("renderer: preload exposes ipc", (await run("typeof window.ipc?.send")) === "function");
++  check("renderer: allowed channel accepted", (await run("(()=>{try{window.ipc.send('check-update');return 'ok'}catch(e){return e.message}})()")) === "ok");
++  check("renderer: unknown send channel refused", /not allowed/.test(await run("(()=>{try{window.ipc.send('shell-exec','x');return 'sent'}catch(e){return e.message}})()")));
++  check("renderer: unknown invoke channel rejected", /not allowed/.test(await run("window.ipc.invoke('read-file','/etc/passwd').then(()=>'ok',e=>e.message)")));
++  check("renderer: unknown receive channel refused", /not allowed/.test(await run("(()=>{try{window.ipc.on('secret',()=>{});return 'ok'}catch(e){return e.message}})()")));
++
++  require(path.join(out, "main", "security.js")).installSecurityHandlers();
++  const w2 = new BrowserWindow({ show: false, webPreferences: prefs });
++  await w2.loadURL("data:text/html,<html><body>x</body></html>");
++  await w2.webContents.executeJavaScript("location.href='https://evil.example/'").catch(() => {});
++  await new Promise((r) => setTimeout(r, 800));
++  check("navigation away from app content blocked", w2.webContents.getURL().startsWith("data:"), w2.webContents.getURL());
++  const popup = await w2.webContents.executeJavaScript("window.open('https://evil.example/') === null");
++  check("window.open denied", popup === true);
++  check("only the original windows exist (no popup)", BrowserWindow.getAllWindows().length === 2);
++
++  const failed = results.filter((r) => !r.ok).length;
++  console.log(failed ? `${failed} FAILED` : `all ${results.length} passed`);
++  app.exit(failed ? 1 : 0);
++});
