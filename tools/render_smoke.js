@@ -2,7 +2,8 @@
 // errors / console errors from the app, an empty #root/#app, or a missing screenshot. Usage: electron tools/render_smoke.js <dir> <out.png> [rootSelector]
 const { app, BrowserWindow } = require("electron");
 const fs = require("fs"), path = require("path");
-const [dir, shot, sel = "#root"] = process.argv.slice(2);
+// Chromium switches (--no-sandbox, ...) stay in argv on Linux, so take the arguments after this script's own path.
+const [dir, shot, sel = "#root"] = process.argv.slice(process.argv.findIndex((a) => a.endsWith("render_smoke.js")) + 1);
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".mp3": "audio/mpeg", ".ico": "image/x-icon", ".woff2": "font/woff2" };
 // No sockets at all: the build is served through a privileged custom scheme handled in-process (both the in-process HTTP server and a child-process
 // server hung on the Linux CI runner). SPA fallback to index.html mirrors a production history-mode server.
