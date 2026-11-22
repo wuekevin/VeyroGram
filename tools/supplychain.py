@@ -59,7 +59,7 @@ def modules():
     seen = {}
     for line in out.stdout.splitlines():
         p, v, d = (line.split("\t") + ["", ""])[:3]
-        if p:
+        if p and not p.startswith("veyrogram/"):  # first-party modules (the generated client) are ours, not a third-party dependency
             seen[(p, v)] = d
     return sorted((p, v, d) for (p, v), d in seen.items())
 

@@ -243,6 +243,13 @@ Mac 上已用真实 MySQL 8.0（含 binlog）、第二个真实 mysqld、真实 
   3. 合规要求保留旧系统的历史消息。
 - **不需要你做的：** 没有迁移脚本，也就没有“迁移回滚”可演练；全新部署走安装向导（1.21）。
 
+
+### C12. 客户端包的发布（Story 1.11，需要你的注册表账号）
+生成的客户端在 `packages/clients/`，随契约版本放在仓库里。要让各端工程按版本依赖它们，需要发布到包仓库；我没有账号，也不会替你注册：
+- **TypeScript**：npm（建议私有 scope，如 `@veyrogram/client`）。需要 npm 账号和 2FA；发布命令 `npm publish --access restricted`。
+- **Kotlin**：Maven（私有仓库或 GitHub Packages）；Kotlin 客户端到 Story 1.9 的 Android 工程里才第一次被编译，发布前先过那一步。
+- **Swift**：SwiftPM 直接引用 Git 标签即可，不需要中央注册表。
+- 在你决定之前，各端工程可以直接用相对路径引用仓库里的 `packages/clients/*`。
 ---
 
 ## D. 审计锚点的异地存储（防“控制了数据库的人改历史”）

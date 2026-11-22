@@ -96,6 +96,13 @@ jobs:
       - run: python3 -I tools/lint_infra.py
       - run: python3 -I tests/ops/test_lint_infra.py
       - run: python3 -I tests/ops/test_openapi_diff.py
+      - run: python3 -I tests/ops/test_gen_clients.py
+      - name: API clients are generated from the current contract
+        run: python3 -I tools/gen_clients.py --check
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: API clients compile (go, typescript)
+        run: bash tools/check_clients.sh
       - run: python3 -I tools/check_upstream_compat.py
       - run: python3 -I tests/ops/test_upstream_compat.py
       - name: OpenAPI diff vs base branch (breaking changes need a MAJOR bump or an ADR)

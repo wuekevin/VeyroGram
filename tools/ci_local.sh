@@ -21,6 +21,9 @@ if [ -x "$(cd services/api && go env GOPATH)/bin/govulncheck" ]; then
 else
   echo "NOTE: govulncheck not installed - vulnerability scan SKIPPED (go install golang.org/x/vuln/cmd/govulncheck@v1.1.4)"
 fi
+step "API clients are generated from the current contract" python3 -I tools/gen_clients.py --check
+step "API client generator (tests)"     python3 -I tests/ops/test_gen_clients.py
+step "API clients compile (go, typescript, swift)" bash tools/check_clients.sh
 step "OpenAPI diff gate (tests)"        python3 -I tests/ops/test_openapi_diff.py
 step "upstream compat guard"             python3 -I tools/check_upstream_compat.py
 step "upstream compat guard (tests)"     python3 -I tests/ops/test_upstream_compat.py
