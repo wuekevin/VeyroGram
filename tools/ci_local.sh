@@ -32,6 +32,11 @@ if [ -d upstream/TangSengDaoDaoWeb ] && [ -d upstream/TangSengDaoDaoManager ] &&
 else
   echo "NOTE: upstream/TangSengDaoDao{Web,Manager} missing or VG_SKIP_CLIENT_BUILD=1 - client builds SKIPPED"
 fi
+if [ -n "${JAVA_HOME:-}" ] && "$JAVA_HOME/bin/java" -version 2>&1 | grep -q '"17\.'; then
+  step "Kotlin API client: compile + contract tests" bash -c 'cd packages/clients/kotlin && ./gradlew --no-daemon -q test'
+else
+  echo "NOTE: JAVA_HOME is not a JDK 17 - Kotlin client tests SKIPPED"
+fi
 step "mobile build gates (tests: Android policy, Gradle audit parsing)" python3 -I tests/ops/test_mobile_gates.py
 if [ -d upstream/TangSengDaoDaoAndroid ] && [ "${VG_SKIP_CLIENT_BUILD:-0}" != 1 ]; then
   aw=$(mktemp -d)

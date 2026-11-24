@@ -479,6 +479,16 @@ def kt_type(ir, t, nullable=False):
     return base + ("?" if nullable or k == "json" else "")
 
 
+KT_HARD_KEYWORDS = {"as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in", "interface", "is", "null", "object",
+                    "package", "return", "super", "this", "throw", "true", "try", "typealias", "typeof", "val", "var", "when", "while"}
+
+
+def ktn(s):
+    """lowerCamel identifier, backticked when it is a Kotlin hard keyword (the contract has a field called `class`)."""
+    n = lcamel(s)
+    return "`%s`" % n if n in KT_HARD_KEYWORDS else n
+
+
 def gen_kotlin(ir):
     o = ["// " + HEADER, "// Contract version %s" % ir.version, "package app.veyrogram.client", "",
          "import kotlinx.serialization.SerialName\nimport kotlinx.serialization.Serializable\nimport kotlinx.serialization.json.Json\nimport kotlinx.serialization.json.JsonObject\nimport kotlinx.serialization.encodeToString\nimport kotlinx.serialization.decodeFromString\nimport java.net.URLEncoder", ""]
@@ -491,7 +501,7 @@ def gen_kotlin(ir):
         o.append("@Serializable\ndata class %s(" % name)
         ps = []
         for pn, pt, req, doc in obj["props"]:
-            ps.append("    @SerialName(\"%s\") val %s: %s%s" % (pn, lcamel(pn), kt_type(ir, pt, not req), "" if req else " = null"))
+            ps.append("    @SerialName(\"%s\") val %s: %s%s" % (pn, ktn(pn), kt_type(ir, pt, not req), "" if req else " = null"))
         o.append(",\n".join(ps))
         o.append(")\n")
     o.append('''/** The standard error envelope (AD-8). [code] is stable and machine-readable. */
@@ -531,20 +541,20 @@ class VeyroGramClient(
 ''')
     for op in ir.ops:
         pp = op["params"]
-        args = ["%s: %s%s" % (lcamel(p["name"]), kt_type(ir, p["type"], not p["required"]), "" if p["required"] else " = null") for p in pp]
+        args = ["%s: %s%s" % (ktn(p["name"]), kt_type(ir, p["type"], not p["required"]), "" if p["required"] else " = null") for p in pp]
         if op["body"]:
             args.append("body: %s" % kt_type(ir, op["body"]))
         ret = kt_type(ir, op["resp"]) if op["resp"] else "Unit"
-        path = pathfmt(op["path"], lambda n: "${enc(%s)}" % lcamel(n))
-        q = ", ".join('"%s" to %s' % (p["name"], lcamel(p["name"])) for p in pp if p["in"] == "query")
-        hh = ", ".join('"%s" to %s' % (p["name"], lcamel(p["name"])) for p in pp if p["in"] == "header")
+        path = pathfmt(op["path"], lambda n: "${enc(%s)}" % ktn(n))
+        q = ", ".join('"%s" to %s' % (p["name"], ktn(p["name"])) for p in pp if p["in"] == "query")
+        hh = ", ".join('"%s" to %s' % (p["name"], ktn(p["name"])) for p in pp if p["in"] == "header")
         bodyexpr = "json.encodeToString(body)" if op["body"] else "null"
         o.append("    /** %s %s%s */" % (op["method"], op["path"], " - " + one_line(op["doc"]) if op["doc"] else ""))
         call = 'call("%s", "%s", mapOf(%s), mapOf(%s), %s, %s, %d)' % (op["method"], path, q, hh, bodyexpr, "true" if op["auth"] else "false", op["status"])
         if op["resp"]:
-            o.append("    fun %s(%s): %s = json.decodeFromString(%s)\n" % (lcamel(op["id"]), ", ".join(args), ret, call))
+            o.append("    fun %s(%s): %s = json.decodeFromString(%s)\n" % (ktn(op["id"]), ", ".join(args), ret, call))
         else:
-            o.append("    fun %s(%s) { %s }\n" % (lcamel(op["id"]), ", ".join(args), call))
+            o.append("    fun %s(%s) { %s }\n" % (ktn(op["id"]), ", ".join(args), call))
     o.append("}")
     return {"kotlin/src/main/kotlin/app/veyrogram/client/VeyroGramClient.kt": "\n".join(o) + "\n"}
 

@@ -11,3 +11,7 @@ bin/
 *.pem
 *.key
 node_modules/
+
+# Kotlin client build output
+packages/clients/kotlin/build/
+packages/clients/kotlin/.gradle/

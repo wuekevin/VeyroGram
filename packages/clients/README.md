@@ -9,7 +9,7 @@ TypeScript, Go, Kotlin and Swift clients, generated from `packages/contracts/ope
 | Go | `go/` (module `veyrogram/clients/go`, standard library only) | `go vet`; **driven against the real API end to end** by `services/api/cmd/api/clientcontract_test.go` |
 | TypeScript | `typescript/src/index.ts` (global `fetch`) | `tsc --strict` |
 | Swift | `swift/` (Swift package, `URLSession`) | `swiftc -typecheck` on a Mac (not in the Linux CI) |
-| Kotlin | `kotlin/` (`kotlinx.serialization`, you supply the transport) | **not compiled anywhere yet**: no Kotlin toolchain here; the Android build (Story 1.9) is where it first gets compiled |
+| Kotlin | `kotlin/` (`kotlinx.serialization`, you supply the transport; Gradle project with its own pinned wrapper) | compiled and **9 contract tests** (`ClientContractTest`: bearer handling, error envelope, reserved-word field `class`, open payload, query/path encoding) in the CI `android` job; first compile found the generator emitting `val class` (a Kotlin keyword), now escaped |
 
 All four: bearer token comes from a caller-supplied provider (store it in the platform secure store - Keychain/Keystore - never in the client), the
 standard error envelope `{code, message, trace_id, details}` becomes one typed error, unknown response fields are ignored, and certificate

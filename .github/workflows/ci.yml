@@ -155,6 +155,9 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - run: python3 -I tests/ops/test_mobile_gates.py
+      - name: Kotlin API client - compile and contract tests
+        timeout-minutes: 15
+        run: cd packages/clients/kotlin && ./gradlew --no-daemon test
       - name: fetch pinned upstream
         run: |
           mkdir -p upstream

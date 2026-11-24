@@ -39,7 +39,7 @@ data class CreateAdminResponse(
 @Serializable
 data class Device(
     @SerialName("id") val id: String,
-    @SerialName("class") val class: String,
+    @SerialName("class") val `class`: String,
     @SerialName("name") val name: String,
     @SerialName("created_at") val createdAt: String,
     @SerialName("last_seen_at") val lastSeenAt: String,
@@ -123,7 +123,7 @@ data class LoginRequest(
 @Serializable
 data class LoginRequestDevice(
     @SerialName("id") val id: String,
-    @SerialName("class") val class: String,
+    @SerialName("class") val `class`: String,
     @SerialName("name") val name: String? = null
 )
 
