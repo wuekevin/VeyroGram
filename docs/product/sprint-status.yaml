@@ -35,7 +35,7 @@ project_key: NOKEY
 tracking_system: file-system
 story_location: docs/stories
 development_status:
-  epic-1: backlog
+  epic-1: in-progress
   1-1-服务骨架-配置校验与健康探针: review
   1-2-原生部署骨架与-ci-基线: review
   1-3-迁移基座与幂等表: review
@@ -60,7 +60,7 @@ development_status:
   1-22-备份实现-mysql-pitr-im-存储-对象存储: review
   1-23-上游兼容与数据迁移决策: review
   1-24-测试与安全门禁基座: review
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: backlog
   2-1-内容类型注册表与未知类型降级: backlog
