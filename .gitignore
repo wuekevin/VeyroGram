@@ -27,3 +27,7 @@ tests/imsdk/ios/Pods/
 tests/imsdk/ios/build/
 tests/imsdk/ios/Probe.xcworkspace/xcuserdata/
 tests/imsdk/ios/Probe.xcodeproj/xcuserdata/
+
+# stray Redis dumps from local test runs
+dump.rdb
+*.rdb
