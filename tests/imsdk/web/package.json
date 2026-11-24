@@ -1,0 +1,7 @@
+{
+  "name": "veyrogram-imsdk-contract",
+  "private": true,
+  "description": "Interop contract test: the exact IM SDK the Web client ships (wukongimjssdk 1.2.11) against the pinned, patched WuKongIM build (Story 1.11 AC2).",
+  "type": "module",
+  "dependencies": { "wukongimjssdk": "1.2.11" }
+}

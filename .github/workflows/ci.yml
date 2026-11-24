@@ -39,8 +39,13 @@ jobs:
           mkdir -p upstream && git clone --quiet https://github.com/WuKongIM/WuKongIM.git upstream/WuKongIM
           git -C upstream/WuKongIM checkout --quiet "$pin"
           bash tools/build_wukongim.sh "$RUNNER_TEMP/wukongim"
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: IM SDK interop test dependencies (the exact wukongimjssdk the Web client ships)
+        working-directory: tests/imsdk/web
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: test (race) incl. AD-1 import-direction check and WuKongIM contract tests
-        env: { VG_TEST_MYSQL_DSN: 'root:ci-only-root@tcp(127.0.0.1:3306)/', VG_TEST_REDIS_ADDR: '127.0.0.1:6379' }
+        env: { VG_TEST_MYSQL_DSN: 'root:ci-only-root@tcp(127.0.0.1:3306)/', VG_TEST_REDIS_ADDR: '127.0.0.1:6379', VG_REQUIRE_IMSDK: '1' }
         run: VG_TEST_WUKONGIM_BIN="$RUNNER_TEMP/wukongim" go test -race -count=1 ./...
       - name: backup and restore rehearsal (real MySQL source with binlog, scratch mysqld target, real encryption); skips itself if the runner cannot start a second mysqld
         working-directory: .
