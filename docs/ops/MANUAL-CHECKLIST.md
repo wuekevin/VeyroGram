@@ -58,9 +58,9 @@ Settings → Code security：启用 Dependabot alerts / security updates（已�
   ```
   gh repo fork WuKongIM/WuKongIM --clone=false --fork-name WuKongIM
   git -C upstream/WuKongIM remote add vgfork https://github.com/wuekevin/WuKongIM.git
-  git -C upstream/WuKongIM checkout -b veyrogram/patches 7b810e08 && git -C upstream/WuKongIM am ../../patches/wukongim/*.patch
+  git -C upstream/WuKongIM checkout -b veyrogram/patches 21d905a3 && git -C upstream/WuKongIM am ../../patches/wukongim/*.patch
   git -C upstream/WuKongIM push vgfork veyrogram/patches
-  git -C upstream/WuKongIM checkout 7b810e08     # 之后务必回到固定 SHA，构建脚本会检查
+  git -C upstream/WuKongIM checkout 21d905a3     # 之后务必回到固定 SHA，构建脚本会检查
   ```
 - 注意：fork 默认公开；若要私有需在 fork 的设置里改（公开仓库的 fork 无法直接改私有，需要“复制”而不是 fork）。
 

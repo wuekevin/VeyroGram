@@ -168,7 +168,7 @@ graph TD
 | Name | Version |
 | --- | --- |
 | Go (business services) | 1.26.x (pin exact patch in CI; WuKongIM needs 1.26.x - it fails to build on 1.27 - and builds and passes the contract tests on go1.26.11, which fixes GO-2026-6859 in net/http) |
-| WuKongIM | pinned SHA (audited: 7b810e08, untagged `main`; latest tag v3.0.0-beta.27 — beta risk); move to a tag when selected |
+| WuKongIM | pinned to tag **v3.0.0-beta.30** (`21d905a3`, 2026-11-24; still a beta series — beta risk); earlier audit evidence was taken at `7b810e08` (untagged `main`, between beta.27 and beta.28) |
 | MySQL | **8.0 (user decision, ADR-0002)** — baseline 8.0.46; 8.0 is past EOL (April 2026), risk accepted (R-31); SQL uses 8.0 syntax only |
 | Redis | **7.x (user decision)** — use only commands available in 7.x (no Redis 8–only features); pin the exact 7.x patch in Phase 2 and record its license (7.2.x is the last BSD-licensed line; 7.4+ is RSALv2/SSPLv1 [verify]) |
 | Nginx | current stable (via 宝塔) |

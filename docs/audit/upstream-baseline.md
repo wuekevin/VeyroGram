@@ -10,7 +10,7 @@
 | TangSengDaoDaoiOS | main | 6913a3b320f6b278676ac22e4a45e416b64cb56f | 2026-09-28 | Apache-2.0 / LICENSE |
 | TangSengDaoDaoWeb | main | 1bd8a2d15064a48eff85be423530801eed9abc99 | 2026-06-11 | **无 LICENSE 文件** |
 | TangSengDaoDaoDocs | main | 41e11cbd276ff3e1f44f7c16b95b663afe1f24f1 | 2026-01-01 | MIT / LICENSE |
-| WuKongIM | main | 7b810e08ff93935b3ab54fe679f8ea27ab2d30d7 | 2026-11-11 | Apache-2.0 / LICENSE |
+| WuKongIM | tag v3.0.0-beta.30 | 21d905a328bb7141167bc6dbe20fdb65588e0420 | 2026-11-24 | Apache-2.0 / LICENSE（审计基线原为 main@7b810e08 2026-11-11，已升级固定点，见下） |
 
 ## 已在源码确认的事实 [FOUND_IN_SOURCE]
 - Server：Go，`go.mod` 声明 `go 1.20`，依赖 `TangSengDaoDaoServerLib`（伪版本 9410aea0201d，2026-11-12）；`modules/` 含 base、channel、common、file、group、message、openapi、qrcode、report、robot、search、source、statistics、user、webhook、workplace；仅 23 个 `_test.go`。SECURITY.md 列 5.1.x/4.0.x 受支持。
@@ -38,3 +38,7 @@
 | Web | 22 | v1.0.0 (2023-07-12) | 2026-06-11 |
 | WuKongIM | 101 | v3.0.0-beta.27 (2026-11-04) | 2026-11-11 |
 Issue/PR 内容未逐条阅读（仅计数），不据此认定具体缺陷。
+
+## WuKongIM 固定点升级记录
+- 2026-11-24：`7b810e08`（main，介于 v3.0.0-beta.27 与 beta.28 之间，未打标签）→ `21d905a3`（标签 **v3.0.0-beta.30**，领先 39 个提交，旧固定点是它的祖先）。补丁队列（`patches/wukongim/0001` webhook HMAC 签名）无需改动即可应用；用新二进制跑通：`go test -race ./...`（含 imgw/imwebhook 契约测试、Web IM SDK 互通测试）、暴露面检查、本地 CI 全套（结果见提交说明）。这也解决了 `docs/architecture/review-architecture-independent.md` 的 M-3（WuKongIM 不是"tagged version"）。
+- 注意：ADR-0006、ADR-0010、risk-register R-21、architecture-as-is 里的"源码核对于 7b810e08"是当时的审计证据。复核：`internal/access/api`（R-21 的 `/message/send`、`/user/token` 无鉴权、ADR-0010 的无消息搜索接口所依据的目录）在 7b810e08 与 21d905a3 之间**零改动**，这几条结论在 beta.30 上同样成立；beta.30 其余 182 个文件的改动（网络层、集群、保留策略等）没有重新审计。

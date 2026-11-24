@@ -3,7 +3,7 @@
 # Fails if upstream/WuKongIM is not at the pinned SHA, and if any patch does not apply cleanly. The upstream checkout is never modified:
 # the build happens in a throwaway detached worktree.
 set -euo pipefail
-PIN=7b810e08
+PIN=21d905a3
 out=${1:?usage: build_wukongim.sh <output-binary>}
 root=$(cd "$(dirname "$0")/.." && pwd)
 case "$out" in /*) ;; *) out="$PWD/$out" ;; esac

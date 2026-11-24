@@ -1,6 +1,6 @@
 # IM SDK ↔ WuKongIM 兼容矩阵（Story 1.11，AD-8 / AD-17）
 
-服务端 WuKongIM 固定在 `tools/build_wukongim.sh` 的 `PIN`（现为 `7b810e08`）加 `patches/wukongim/` 补丁队列。各端 IM SDK 版本固定如下；升级任一方必须先让对应互通测试通过。
+服务端 WuKongIM 固定在 `tools/build_wukongim.sh` 的 `PIN`（现为 `21d905a3` = 上游标签 `v3.0.0-beta.30`，2026-11-24；此前是 `main@7b810e08`）加 `patches/wukongim/` 补丁队列。各端 IM SDK 版本固定如下；升级任一方必须先让对应互通测试通过。
 
 | 端 | IM SDK | 固定方式 | 与服务端互通测试 |
 |---|---|---|---|

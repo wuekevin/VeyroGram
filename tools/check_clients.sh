@@ -15,4 +15,4 @@ if command -v swiftc >/dev/null 2>&1; then
 else
   echo "NOTE: swiftc not found - Swift client NOT compile-checked here"
 fi
-echo "NOTE: the Kotlin client is generated but not compile-checked (no Kotlin toolchain in CI yet)"
+echo "NOTE: the Kotlin client is compiled and tested separately (packages/clients/kotlin, gradle test; CI android job)"
