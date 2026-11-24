@@ -15,3 +15,9 @@ node_modules/
 # Kotlin client build output
 packages/clients/kotlin/build/
 packages/clients/kotlin/.gradle/
+
+# Android IM SDK probe build output
+tests/imsdk/android/.gradle/
+tests/imsdk/android/build/
+tests/imsdk/android/app/build/
+tests/imsdk/android/local.properties
