@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Compile-checks the generated API clients (Story 1.11). Go and TypeScript always; Swift where swiftc exists. Kotlin is NOT compiled anywhere in CI yet
-# (it needs the Kotlin compiler plus the kotlinx.serialization plugin, i.e. a Gradle project) - the output says so instead of implying it was checked.
+# Compile-checks the generated API clients (Story 1.11). Go and TypeScript always; Swift where swiftc exists. Kotlin needs a Gradle project (compiler plus the kotlinx.serialization
+# plugin), so it is compiled and tested separately in packages/clients/kotlin (gradle test, CI android job); the output says so.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
