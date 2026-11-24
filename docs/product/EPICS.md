@@ -2300,10 +2300,10 @@ So that 高效、一致、可访问的运营体验.
 
 详见 `docs/stories/9.6-*.md`（测试、跨端任务、配置与回滚）。
 
-### Story 9.7: IM运维入口（WuKongIM 后台经管理后台鉴权代理）
+### Story 9.7: 通讯引擎入口（WuKongIM 后台经管理后台鉴权代理）
 
 As a 平台运维,
-I want 在管理后台“运维”下进入 WuKongIM 自带后台，免二次登录且仅限有权限的管理员,
+I want 在管理后台“运维 → 通讯引擎”进入 WuKongIM 自带后台，免二次登录且仅限有权限的管理员,
 So that 统一登录、权限与审计，同时保持 WuKongIM 管理端口不对外.
 
 *阶段：Phase 3｜需求：FR-45,FR-46｜架构：AD-15,AD-16｜依赖：1.16,9.1｜规模：M*
@@ -2311,11 +2311,11 @@ So that 统一登录、权限与审计，同时保持 WuKongIM 管理端口不�
 **Acceptance Criteria:**
 
 **Given** 具备 ops.im.view 的管理员且已通过 MFA
-**When** 点击“运维-IM运维”
+**When** 点击“运维-通讯引擎”
 **Then** 直接进入 WuKongIM 后台且不出现其登录页，并写审计（谁、何时、角色级别）
 
 **Given** 无该权限、会话失效或未通过 MFA 的请求
-**When** 访问 IM 运维路径
+**When** 访问通讯引擎路径
 **Then** 一律 401/403，不向 WuKongIM 转发任何请求
 
 **Given** 外部网络
@@ -2327,7 +2327,7 @@ So that 统一登录、权限与审计，同时保持 WuKongIM 管理端口不�
 **Then** 分别映射到 WuKongIM 只读与可写管理用户，只读用户的写操作被 WuKongIM 拒绝
 
 **Given** 管理员权限被撤销或会话结束
-**When** 已打开的 IM 运维页继续请求
+**When** 已打开的通讯引擎页继续请求
 **Then** 在会话有效期内最迟下一次请求即被拒绝，代理签发的 WuKongIM 令牌有效期短且不落入浏览器持久存储
 
 详见 `docs/stories/9.7-*.md`（测试、跨端任务、配置与回滚）。
