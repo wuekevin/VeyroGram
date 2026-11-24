@@ -45,8 +45,16 @@ EOF
 xcrun --sdk iphonesimulator clang -arch arm64 -target arm64-apple-ios13.0-simulator -fobjc-arc -w -I "$bug/Headers" -c "$stub/bugly_stub.m" -o "$stub/bugly_stub.o"
 rm -f "$bug/Bugly"; ar rcs "$bug/Bugly" "$stub/bugly_stub.o"
 rm -rf "$stub"
+# Unsigned simulator binaries carry no entitlements, so every Keychain call fails with -34018 and the session could not be saved. Embed the
+# simulated entitlements Xcode would add when signing (simulator build only; the device build is signed later and gets them from signing).
+ents="$work/vg-sim-entitlements.plist"
+cat > "$ents" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict>
+<key>application-identifier</key><string>com.veyrogram.app</string>
+<key>keychain-access-groups</key><array><string>com.veyrogram.app</string></array></dict></plist>
+EOF
 dd="$work/DerivedData"
-xcodebuild -workspace TangSengDaoDaoiOS.xcworkspace -scheme WuKongChatiOS -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ARCHS=arm64 EXCLUDED_ARCHS= \
+xcodebuild -workspace TangSengDaoDaoiOS.xcworkspace -scheme WuKongChatiOS -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' ARCHS=arm64 EXCLUDED_ARCHS= ENABLE_DEBUG_DYLIB=NO OTHER_LDFLAGS='$(inherited) -Wl,-sectcreate,__TEXT,__entitlements,'"$ents" \
   -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build > "$work/build.log" 2>&1 || { grep 'error:' "$work/build.log" | head -20 >&2; exit 1; }
 app=$(find "$dd/Build/Products" -maxdepth 2 -name '*.app' | head -1)
 [ -n "$app" ] || { echo "no .app produced" >&2; exit 1; }
