@@ -1,0 +1,11 @@
+# IM SDK probe for iOS (Story 1.11 AC2). The SDK pod is the EXACT source pinned by apps/ios/PIN (run.sh extracts it to build/sdk).
+platform :ios, '13.0'
+install! 'cocoapods', :warn_for_unused_master_specs_repo => false
+target 'Probe' do
+  pod 'WuKongIMSDK', :path => './build/sdk/Modules/WuKongIMiOSSDK'
+end
+post_install do |installer|
+  installer.pods_project.targets.each do |t|
+    t.build_configurations.each { |c| c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'; c.build_settings['ENABLE_BITCODE'] = 'NO'; c.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = '' }
+  end
+end

@@ -21,3 +21,9 @@ tests/imsdk/android/.gradle/
 tests/imsdk/android/build/
 tests/imsdk/android/app/build/
 tests/imsdk/android/local.properties
+
+# iOS IM SDK probe build output
+tests/imsdk/ios/Pods/
+tests/imsdk/ios/build/
+tests/imsdk/ios/Probe.xcworkspace/xcuserdata/
+tests/imsdk/ios/Probe.xcodeproj/xcuserdata/

@@ -1,0 +1,41 @@
+PODS:
+  - 25519 (2.0.2)
+  - CocoaAsyncSocket (7.6.5)
+  - FMDB/Core (2.7.12)
+  - FMDB/SQLCipher (2.7.12):
+    - FMDB/Core
+    - SQLCipher (~> 4.6)
+  - SQLCipher (4.10.0):
+    - SQLCipher/standard (= 4.10.0)
+  - SQLCipher/common (4.10.0)
+  - SQLCipher/standard (4.10.0):
+    - SQLCipher/common
+  - WuKongIMSDK (1.1.0):
+    - 25519 (~> 2.0.2)
+    - CocoaAsyncSocket (~> 7.6.5)
+    - FMDB/SQLCipher (~> 2.7.5)
+
+DEPENDENCIES:
+  - WuKongIMSDK (from `./build/sdk/Modules/WuKongIMiOSSDK`)
+
+SPEC REPOS:
+  trunk:
+    - '25519'
+    - CocoaAsyncSocket
+    - FMDB
+    - SQLCipher
+
+EXTERNAL SOURCES:
+  WuKongIMSDK:
+    :path: "./build/sdk/Modules/WuKongIMiOSSDK"
+
+SPEC CHECKSUMS:
+  '25519': dc4bad7e2dbcbf1efa121068a705a44cd98c80fc
+  CocoaAsyncSocket: 065fd1e645c7abab64f7a6a2007a48038fdc6a99
+  FMDB: 728731dd336af3936ce00f91d9d8495f5718a0e6
+  SQLCipher: eb79c64049cb002b4e9fcb30edb7979bf4706dfc
+  WuKongIMSDK: 9c93f5e5e5038e0f11618cb1f87c85c09edcca79
+
+PODFILE CHECKSUM: 42499c2906623d5e83cc4149bf5f57600e48c9f9
+
+COCOAPODS: 1.17.0
