@@ -111,7 +111,15 @@ jobs:
       - run: python3 -I tools/check_upstream_compat.py
       - run: python3 -I tests/ops/test_upstream_compat.py
       - name: OpenAPI diff vs base branch (breaking changes need a MAJOR bump or an ADR)
-        run: python3 -I tools/openapi_diff.py --dir packages/contracts/openapi --base-ref "origin/${{ github.base_ref || 'main' }}"
+        env:
+          OPENAPI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          : "${OPENAPI_BASE:?missing OpenAPI baseline}"
+          if [[ "$OPENAPI_BASE" == 0000000000000000000000000000000000000000 ]]; then
+            exit 0
+          fi
+          git rev-parse --verify "${OPENAPI_BASE}^{commit}" >/dev/null
+          python3 -I tools/openapi_diff.py --dir packages/contracts/openapi --base-ref "$OPENAPI_BASE"
       - run: bash tests/ops/test_deploy.sh
       - run: bash tests/ops/test_install.sh
       - run: bash tests/ops/test_canary.sh

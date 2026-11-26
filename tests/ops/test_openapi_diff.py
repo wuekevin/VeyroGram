@@ -56,9 +56,20 @@ class Gate(unittest.TestCase):
 class GitMode(unittest.TestCase):
     def test_no_specs_and_unknown_ref_pass(self):
         with tempfile.TemporaryDirectory() as t:
-            subprocess.run(['git', 'init', '-q', t]); subprocess.run(['git', '-C', t, 'commit', '-q', '--allow-empty', '-m', 'i', '-c', 'user.name=t', '-c', 'user.email=t@t'], capture_output=True)
-            r = subprocess.run([sys.executable, '-I', D.__file__, '--dir', 'specs', '--base-ref', 'origin/main'], cwd=t, capture_output=True, text=True)
-            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            subprocess.run(['git', 'init', '-q', t], check=True)
+            subprocess.run(
+                ['git', '-C', t, '-c', 'user.name=t', '-c', 'user.email=t@t',
+                 'commit', '-q', '--allow-empty', '-m', 'initial'],
+                check=True,
+            )
+            for baseline, message in [('HEAD', 'no OpenAPI specs'), ('origin/main', 'not found')]:
+                with self.subTest(baseline=baseline):
+                    result = subprocess.run(
+                        [sys.executable, '-I', D.__file__, '--dir', 'specs', '--base-ref', baseline],
+                        cwd=t, capture_output=True, text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(message, result.stdout)
     def test_removed_spec_file_is_breaking(self):
         with tempfile.TemporaryDirectory() as t:
             env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@t')
